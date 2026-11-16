@@ -1,0 +1,10 @@
+node_modules
+dist
+android
+android-overrides
+scripts
+.git
+.claude
+*.apk
+*.log
+build.local.json

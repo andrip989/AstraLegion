@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+
+# Proyek Android di-generate oleh scripts/build.ps1 (Capacitor); yang dilacak hanya android-overrides/
+android/
+*.apk
+
+# Konfigurasi lokal per mesin
+build.local.json
+.claude/

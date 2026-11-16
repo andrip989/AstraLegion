@@ -1,0 +1,12 @@
+{
+  "appId": "com.astralegion.game",
+  "appName": "Astra Legion",
+  "webDir": "dist/client",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
