@@ -40,6 +40,40 @@ function Copy-Tree([string]$from, [string]$to) {
   $global:LASTEXITCODE = 0
 }
 
+# Unggah hasil build web ke folder hosting, file demi file. Folder hosting biasanya drive
+# jaringan (WebDAV/FTP) yang lambat, jadi: aset ber-hash yang sudah ada dilewati, index.html
+# diunggah paling akhir (situs baru beralih setelah semua chunk siap), lalu aset lama dihapus.
+function Publish-Web([string]$from, [string]$to) {
+  $assetsFrom = Join-Path $from 'assets'
+  $assetsTo = Join-Path $to 'assets'
+  if (-not (Test-Path $assetsTo)) { New-Item -ItemType Directory -Force $assetsTo | Out-Null }
+  $existing = @{}
+  foreach ($f in Get-ChildItem $assetsTo -File -ErrorAction SilentlyContinue) { $existing[$f.Name] = $f.Length }
+
+  $assets = @(Get-ChildItem $assetsFrom -File)
+  $todo = @($assets | Where-Object { $existing[$_.Name] -ne $_.Length })
+  $big = @($todo | Where-Object { $_.Length -gt 55KB })
+  if ($big.Count) { Write-Warning "Ada $($big.Count) file di atas 55 KB; unggahan lewat WebDAV bisa sangat lambat untuk file sebesar itu." }
+  Write-Host "  $($assets.Count - $todo.Count) aset sudah ada, $($todo.Count) perlu diunggah"
+  $i = 0
+  foreach ($f in $todo) {
+    $i++
+    Write-Host ("  [{0}/{1}] assets\{2} ({3} KB)" -f $i, $todo.Count, $f.Name, [math]::Round($f.Length / 1KB))
+    Copy-Item $f.FullName (Join-Path $assetsTo $f.Name) -Force
+  }
+  foreach ($f in Get-ChildItem $from -File) {
+    Write-Host "  $($f.Name)"
+    Copy-Item $f.FullName (Join-Path $to $f.Name) -Force
+  }
+  $keep = $assets | ForEach-Object { $_.Name }
+  foreach ($name in $existing.Keys) {
+    if ($keep -notcontains $name) {
+      Write-Host "  hapus aset lama: $name"
+      Remove-Item (Join-Path $assetsTo $name) -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
 # Cari JDK dengan versi mayor >= $min: ASTRA_JAVA_HOME, JAVA_HOME, lalu lokasi umum.
 function Find-Jdk([int]$min) {
   $candidates = @($env:ASTRA_JAVA_HOME, $env:JAVA_HOME)
@@ -71,8 +105,12 @@ $cfgFile = Join-Path $root 'build.local.json'
 $cfg = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw | ConvertFrom-Json } else { $null }
 $publishDir = if ($PublishTo) { $PublishTo } elseif ($cfg -and $cfg.publishDir) { $cfg.publishDir } else { $null }
 $publishUrl = if ($cfg -and $cfg.publishUrl) { $cfg.publishUrl } else { $null }
+$publishApk = [bool]($cfg -and $cfg.publishApk) # APK berukuran beberapa MB; hanya untuk hosting yang kuat menerima file besar
 $doPublish = (-not $NoPublish) -and $publishDir
 if ($doPublish -and -not (Test-Path $publishDir)) { throw "publishDir tidak ditemukan: $publishDir" }
+# Tautan "Unduh APK" di lobby versi web: apkUrl dari konfigurasi, atau file di hosting jika publishApk aktif.
+if ($cfg -and $cfg.apkUrl) { $env:VITE_APK_URL = $cfg.apkUrl }
+elseif ($publishApk) { $env:VITE_APK_URL = './astra-legion.apk' }
 
 # ---------------------------------------------------------------- dependensi
 $stamp = Join-Path $root 'node_modules\.astra-stamp'
@@ -110,9 +148,7 @@ if ($Server) {
 
 if ($doPublish) {
   Step "Publikasi web ke $publishDir"
-  $assets = Join-Path $publishDir 'assets'
-  if (Test-Path $assets) { Remove-Item -Recurse -Force $assets } # buang bundle lama
-  Copy-Tree (Join-Path $root 'dist\client') $publishDir
+  Publish-Web (Join-Path $root 'dist\client') $publishDir
 } elseif (-not $NoPublish) {
   Write-Host 'publishDir belum diatur (lihat build.local.example.json); publikasi dilewati.' -ForegroundColor Yellow
 }
@@ -145,7 +181,7 @@ if ($Apk) {
   if (-not $env:ANDROID_HOME) { throw 'Android SDK tidak ditemukan. Pasang Android Studio atau set ANDROID_HOME.' }
 
   Push-Location $android
-  try { Run 'Gradle assembleDebug (build pertama mengunduh dependensi, bisa beberapa menit)' { .\gradlew.bat assembleDebug --console=plain -q } }
+  try { Run 'Gradle assembleDebug (build pertama mengunduh dependensi, bisa beberapa menit)' { .\gradlew.bat assembleDebug --console=plain -q --no-daemon } }
   finally { Pop-Location }
 
   $built = Join-Path $android 'app\build\outputs\apk\debug\app-debug.apk'
@@ -153,7 +189,7 @@ if ($Apk) {
   $apkOut = Join-Path $root 'astra-legion.apk'
   Copy-Item $built $apkOut -Force
   Write-Host "APK: $apkOut ($([math]::Round((Get-Item $apkOut).Length / 1MB, 1)) MB)" -ForegroundColor Green
-  if ($doPublish) {
+  if ($doPublish -and $publishApk) {
     Step "Publikasi APK ke $publishDir"
     Copy-Item $apkOut (Join-Path $publishDir 'astra-legion.apk') -Force
   }

@@ -100,13 +100,11 @@ playBtn.addEventListener('click', async () => {
   new GameClient(t);
 });
 
-// Tautan unduh APK: hanya di versi web, dan hanya jika file APK memang ada di hosting.
+// Tautan unduh APK: hanya di versi web, dan hanya jika alamatnya diberikan saat build (VITE_APK_URL).
 const isNative = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
-if (!isNative) {
-  fetch('./astra-legion.apk', { method: 'HEAD' })
-    .then((r) => {
-      const type = r.headers.get('content-type') ?? '';
-      if (r.ok && !type.includes('text/html')) $('apk-link').classList.remove('hidden');
-    })
-    .catch(() => undefined);
+const apkUrl = import.meta.env.VITE_APK_URL as string | undefined;
+if (!isNative && apkUrl) {
+  const link = $<HTMLAnchorElement>('apk-link');
+  link.href = apkUrl;
+  link.classList.remove('hidden');
 }

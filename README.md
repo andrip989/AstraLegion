@@ -89,6 +89,8 @@ halaman dengan `?server=http://alamat:3000`.
 
 **Hosting statis** (Apache, Nginx, GitHub Pages, shared hosting): unggah isi `dist/client`.
 Semua path relatif, jadi boleh ditaruh di subfolder. Di sini game berjalan dalam mode offline.
+Build sengaja dipecah menjadi puluhan file kecil (masing-masing di bawah 50 KB), karena unggahan
+file besar lewat drive WebDAV sering macet; batasnya bisa diubah di `client/vite.config.ts`.
 
 **Server multiplayer**: jalankan `npm run build && npm start` di mesin yang bisa menjalankan
 Node.js. Variabel lingkungan:
@@ -116,7 +118,7 @@ Studio versi terbaru sudah mencakup semuanya.
 Di Windows:
 
 ```bat
-build.cmd -Apk
+.\build.cmd -Apk
 ```
 
 Skrip ini mem-build client, membuat proyek Android dengan Capacitor di folder `android/`
@@ -141,16 +143,25 @@ lobby, misalnya `http://192.168.1.10:3000`.
 
 | Perintah | Fungsi |
 | --- | --- |
-| `build.cmd` | build web; jika `publishDir` diatur, salin hasilnya ke folder hosting |
-| `build.cmd -Apk` | seperti di atas, ditambah build APK |
-| `build.cmd -Check` | typecheck + uji simulasi |
-| `build.cmd -Dev` | mode dev |
-| `build.cmd -Server` | build lalu jalankan server produksi |
-| `build.cmd -NoPublish` | build tanpa menyalin ke folder hosting |
+| `.\build.cmd` | build web; jika `publishDir` diatur, unggah hasilnya ke folder hosting |
+| `.\build.cmd -Apk` | seperti di atas, ditambah build APK |
+| `.\build.cmd -Check` | typecheck + uji simulasi |
+| `.\build.cmd -Dev` | mode dev |
+| `.\build.cmd -Server` | build lalu jalankan server produksi |
+| `.\build.cmd -NoPublish` | build tanpa menyentuh folder hosting |
 
 Untuk publikasi otomatis ke hosting yang di-mount sebagai drive (WebDAV/FTP), salin
-`build.local.example.json` menjadi `build.local.json` dan isi `publishDir` (serta `publishUrl`
-jika ingin hasilnya dicek). Jalankan build dari disk lokal, bukan dari drive jaringan.
+`build.local.example.json` menjadi `build.local.json` (tidak ikut git) dan isi:
+
+| Kunci | Fungsi |
+| --- | --- |
+| `publishDir` | folder hosting tujuan; hanya `index.html` dan `assets/` yang diunggah |
+| `publishUrl` | alamat publiknya; setelah unggah, skrip memeriksa bahwa build terbaru sudah tersaji |
+| `publishApk` | `true` untuk ikut mengunggah `astra-legion.apk` (file beberapa MB) |
+| `apkUrl` | alamat unduhan APK untuk tombol "Unduh APK Android" di lobby versi web |
+
+Unggahan dilakukan per file: aset yang sudah ada dilewati, `index.html` diunggah terakhir, dan
+aset lama dihapus. Jalankan build dari disk lokal, bukan dari drive jaringan.
 
 ## Menambah hero baru
 

@@ -1,4 +1,6 @@
 {
   "publishDir": "Z:\\public_html\\game",
-  "publishUrl": "https://contoh.com/game/"
+  "publishUrl": "https://contoh.com/game/",
+  "publishApk": false,
+  "apkUrl": ""
 }

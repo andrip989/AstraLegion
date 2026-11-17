@@ -9,3 +9,4 @@ android/
 # Konfigurasi lokal per mesin
 build.local.json
 .claude/
+*.code-workspace
