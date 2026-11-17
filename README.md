@@ -19,6 +19,8 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
   - **Nova Striker** (ranged blaster): Photon Beam (energy beam), Pulse Grenade, Blink Thrusters,
     Supernova Lance.
   - **Shadow Fang** (assassin): Shadow Dash, Vanish (invisible), Fan of Blades, Night Execution.
+- Karakter beranimasi prosedural (kaki melangkah, lengan mengayun, serangan, casting) dan map
+  berumput yang bergoyang, lengkap dengan bunga, batu, semak, lampu jalan, dan kunang-kunang.
 - Kamera MOBA top-down miring: zoom, geser, kunci ke hero.
 - Klik kanan untuk bergerak dengan pathfinding A* (jalur dihitung di server).
 - HUD: HP, mana, XP, cooldown skill, gold, KDA, skor tim, jam, kill feed, timer respawn, minimap.

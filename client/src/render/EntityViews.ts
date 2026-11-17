@@ -1,5 +1,5 @@
-// Representasi visual tiap entity: model, HP bar, label nama, dan interpolasi posisi
-// antar snapshot server supaya gerakan tetap halus.
+// Representasi visual tiap entity: model + rig animasi, HP bar, label nama, dan interpolasi
+// posisi antar snapshot server supaya gerakan tetap halus.
 import * as THREE from 'three';
 import {
   F_INVIS,
@@ -12,6 +12,7 @@ import {
   type Team,
 } from '../../../shared/src';
 import { buildModel, TEAM_COLOR } from './models';
+import { animateRig, type AnimState, type Rig } from './rig';
 
 export interface View {
   st: EntityStatic;
@@ -29,9 +30,10 @@ export interface View {
   barFg: THREE.Mesh;
   barW: number;
   mats: THREE.MeshStandardMaterial[];
-  spin?: THREE.Object3D;
-  lunge: number;
-  moving: boolean;
+  rig: Rig;
+  anim: AnimState;
+  /** Akumulasi jarak sejak kepulan debu terakhir (hanya hero). */
+  dust: number;
   label?: THREE.Sprite;
   labelKey: string;
   stunFx?: THREE.Mesh;
@@ -49,6 +51,8 @@ const BAR_ENEMY = barMat(0xff4d4d);
 const BAR_NEUTRAL = barMat(0xf2c744);
 const BAR_LOCKED = barMat(0x8791a8);
 const RING_GEO = new THREE.RingGeometry(0.82, 1, 28).rotateX(-Math.PI / 2);
+const BLOB_GEO = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
+const BLOB_MAT = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false });
 const STUN_GEO = new THREE.TorusGeometry(0.45, 0.07, 6, 16).rotateX(Math.PI / 2);
 const STUN_MAT = new THREE.MeshBasicMaterial({ color: 0xfff27a });
 const SHIELD_GEO = new THREE.SphereGeometry(1, 16, 12);
@@ -70,10 +74,16 @@ export class EntityViews {
   readonly views = new Map<number, View>();
   selfId = 0;
   myTeam: Team = 0;
+  /** Dipanggil saat hero yang berlari menjejak tanah (untuk efek debu). */
+  onFootstep: ((x: number, z: number) => void) | null = null;
   private seq = 0;
   private infos = new Map<number, HeroInfo>();
 
-  constructor(private scene: THREE.Scene) {}
+  /** `blobShadows`: bayangan bulat murah di kaki unit, dipakai saat shadow map dimatikan. */
+  constructor(
+    private scene: THREE.Scene,
+    private blobShadows: boolean,
+  ) {}
 
   get(id: number): View | undefined {
     return this.views.get(id);
@@ -96,7 +106,6 @@ export class EntityViews {
       if (!v) continue;
       const first = v.seq === 0;
       const jump = Math.hypot(e[1] - v.x, e[2] - v.z);
-      v.moving = jump > 0.02;
       v.x = e[1];
       v.z = e[2];
       v.rot = e[3];
@@ -128,6 +137,7 @@ export class EntityViews {
 
     const isSelf = st.id === this.selfId;
     const ally = st.team === this.myTeam;
+    const mobile = st.kind !== 'tower' && st.kind !== 'core';
 
     // cincin warna tim di kaki unit
     if (st.kind === 'hero' || st.kind === 'minion') {
@@ -144,6 +154,12 @@ export class EntityViews {
       ring.scale.setScalar(r);
       ring.position.y = 0.06;
       root.add(ring);
+    }
+    if (this.blobShadows && mobile && st.kind !== 'minion') {
+      const blob = new THREE.Mesh(BLOB_GEO, BLOB_MAT);
+      blob.scale.setScalar(st.radius * 1.25);
+      blob.position.y = 0.04;
+      root.add(blob);
     }
 
     // HP bar
@@ -177,16 +193,15 @@ export class EntityViews {
       barFg: fg,
       barW,
       mats: built.mats,
-      spin: built.spin,
-      lunge: 0,
-      moving: false,
+      rig: built.rig,
+      anim: { phase: st.id * 1.7, walk: 0, atk: 0, cast: 0, seed: st.id * 0.73 },
+      dust: 0,
       labelKey: '',
       ghost: false,
     };
     this.views.set(st.id, v);
     this.scene.add(root);
-    const info = this.infos.get(st.id);
-    if (st.kind === 'hero') this.setLabel(v, info);
+    if (st.kind === 'hero') this.setLabel(v, this.infos.get(st.id));
   }
 
   private setLabel(v: View, info?: HeroInfo): void {
@@ -226,6 +241,8 @@ export class EntityViews {
     if (!v) return;
     this.scene.remove(v.root);
     for (const m of v.mats) m.dispose();
+    // geometri hero dibuat per-instance (unit lain memakai geometri bersama dari cache)
+    if (v.st.kind === 'hero') v.model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     if (v.label) {
       v.label.material.map?.dispose();
       v.label.material.dispose();
@@ -238,26 +255,33 @@ export class EntityViews {
     const kr = 1 - Math.exp(-dt * 14);
     for (const v of this.views.values()) {
       const p = v.root.position;
+      const ox = p.x;
+      const oz = p.z;
       p.x += (v.x - p.x) * k;
       p.z += (v.z - p.z) * k;
       v.model.rotation.y = angleLerp(v.model.rotation.y, v.rot, kr);
 
-      // animasi sederhana: langkah saat bergerak, sentakan saat menyerang
-      const mobile = v.st.kind !== 'tower' && v.st.kind !== 'core';
-      if (mobile) {
-        v.model.position.y = v.moving ? Math.abs(Math.sin(time * 11 + v.st.id)) * 0.12 : 0;
-        if (v.lunge > 0) {
-          v.lunge = Math.max(0, v.lunge - dt * 5);
-          const f = Math.sin(v.lunge * Math.PI) * 0.45;
-          v.model.position.x = Math.sin(v.model.rotation.y) * f;
-          v.model.position.z = Math.cos(v.model.rotation.y) * f;
-        } else {
-          v.model.position.x = v.model.position.z = 0;
-        }
+      // animasi: fase langkah mengikuti jarak yang benar-benar ditempuh di layar
+      const a = v.anim;
+      const moved = Math.min(1, Math.hypot(p.x - ox, p.z - oz));
+      const speed = dt > 0 ? moved / dt : 0;
+      const stunned = (v.flags & F_STUN) !== 0;
+      a.phase += moved * v.rig.stride;
+      a.walk += ((speed > 0.8 && !stunned ? 1 : 0) - a.walk) * Math.min(1, dt * 10);
+      if (a.atk > 0) a.atk = Math.max(0, a.atk - dt / 0.42);
+      if (a.cast > 0) a.cast = Math.max(0, a.cast - dt / 0.5);
+      animateRig(v.rig, a, time, dt);
+      if (v.rig.lunge > 0) {
+        const f = a.atk > 0 ? Math.sin((1 - a.atk) * Math.PI) * v.rig.lunge : 0;
+        v.model.position.x = Math.sin(v.model.rotation.y) * f;
+        v.model.position.z = Math.cos(v.model.rotation.y) * f;
       }
-      if (v.spin) {
-        v.spin.rotation.y += dt * 1.2;
-        v.spin.position.y += Math.sin(time * 2 + v.st.id) * 0.002;
+      if (v.st.kind === 'hero' && this.onFootstep && a.walk > 0.6) {
+        v.dust += moved;
+        if (v.dust > 2.2) {
+          v.dust = 0;
+          this.onFootstep(p.x, p.z);
+        }
       }
 
       // HP bar selalu menghadap kamera
@@ -272,7 +296,6 @@ export class EntityViews {
       }
 
       // status: stun, shield, invisible (hanya terlihat oleh tim sendiri -> transparan)
-      const stunned = (v.flags & F_STUN) !== 0;
       if (stunned && !v.stunFx) {
         v.stunFx = new THREE.Mesh(STUN_GEO, STUN_MAT);
         v.stunFx.position.y = v.height + 0.05;

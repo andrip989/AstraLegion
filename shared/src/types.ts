@@ -54,6 +54,7 @@ export interface SelfState {
 
 export type GameEvent =
   | { k: 'atk'; a: number; b: number; r: 0 | 1 }
+  | { k: 'cast'; a: number; s: number }
   | { k: 'beam'; x0: number; z0: number; x1: number; z1: number; w: number; c: number; warn?: 1 }
   | { k: 'ring'; x: number; z: number; r: number; c: number }
   | { k: 'trail'; x0: number; z0: number; x1: number; z1: number; c: number }

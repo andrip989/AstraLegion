@@ -151,6 +151,7 @@ export function castSkill(game: Game, h: Hero, slot: number, x: number, z: numbe
 
   h.mana -= def.mana;
   h.cds[slot] = def.cooldown;
+  game.emit({ k: 'cast', a: h.id, s: slot }); // untuk animasi casting di client
   if (def.target !== 'self') h.rot = Math.atan2(dirX, dirZ);
   if (!def.keepsStealth) h.invisUntil = 0;
   return true;

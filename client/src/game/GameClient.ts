@@ -5,13 +5,14 @@ import { Controls } from '../input/Controls';
 import type { Transport } from '../net/transport';
 import { Effects } from '../render/Effects';
 import { EntityViews } from '../render/EntityViews';
-import { buildMap } from '../render/MapView';
+import { buildMap, type MapView } from '../render/MapView';
 import { SceneManager } from '../render/SceneManager';
 import { Hud } from '../ui/Hud';
 import { Minimap } from '../ui/Minimap';
 
 export class GameClient {
   private sm: SceneManager;
+  private map: MapView;
   private views: EntityViews;
   private fx: Effects;
   private controls: Controls;
@@ -24,9 +25,11 @@ export class GameClient {
 
   constructor(private transport: Transport) {
     this.sm = new SceneManager(document.getElementById('game') as HTMLCanvasElement);
-    buildMap(this.sm.scene);
-    this.views = new EntityViews(this.sm.scene);
+    this.map = buildMap(this.sm.scene);
+    // tanpa shadow map (layar sentuh), unit diberi bayangan bulat sederhana
+    this.views = new EntityViews(this.sm.scene, !this.sm.renderer.shadowMap.enabled);
     this.fx = new Effects(this.sm, this.views);
+    this.views.onFootstep = (x, z) => this.fx.dust(x, z);
     this.controls = new Controls(this.sm, this.views, this.fx, (cmd) => transport.send(cmd));
     this.hud = new Hud(transport.mode, (slot) => this.controls.castSlot(slot, true));
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, this.sm, this.views, () =>
@@ -71,6 +74,7 @@ export class GameClient {
     this.lastFrame = now;
     this.time += dt;
 
+    this.map.update(this.time);
     this.views.update(dt, this.sm.camera, this.time);
     this.controls.update(dt);
     this.fx.update(dt);

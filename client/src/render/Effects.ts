@@ -96,6 +96,18 @@ export class Effects {
     });
   }
 
+  /** Kepulan debu kecil di kaki hero yang berlari. */
+  dust(x: number, z: number): void {
+    const m = new THREE.Mesh(DISC, glowMat(0xcfd8c0, 0.22));
+    m.material.blending = THREE.NormalBlending;
+    m.position.set(x + (Math.random() - 0.5) * 0.5, 0.09, z + (Math.random() - 0.5) * 0.5);
+    this.add(m, 0.55, (_, t) => {
+      const s = 0.25 + t * 0.75;
+      m.scale.set(s, 1, s);
+      m.material.opacity = 0.22 * (1 - t);
+    });
+  }
+
   clickMarker(x: number, z: number, color: number): void {
     const m = new THREE.Mesh(RING, glowMat(color, 1));
     m.position.set(x, 0.1, z);
@@ -112,15 +124,19 @@ export class Effects {
           const a = this.views.get(e.a);
           const b = this.views.get(e.b);
           if (!a) break;
+          a.anim.atk = 1; // memicu animasi ayunan/tembakan pada rig
           if (e.r && b) {
             const tower = a.st.kind === 'tower';
             this.a.set(a.root.position.x, tower ? 6.5 : a.height * 0.55, a.root.position.z);
             this.b.set(b.root.position.x, Math.min(1.2, b.height * 0.5), b.root.position.z);
             const color = tower ? TEAM_COLOR[a.st.team] : a.st.kind === 'hero' ? 0x9af2ff : TEAM_COLOR[a.st.team];
             this.segment(this.a, this.b, tower ? 0.45 : 0.2, color, tower ? 0.22 : 0.14);
-          } else {
-            a.lunge = 1;
           }
+          break;
+        }
+        case 'cast': {
+          const caster = this.views.get(e.a);
+          if (caster) caster.anim.cast = 1;
           break;
         }
         case 'beam': {
