@@ -2004,3 +2004,16 @@ img.logo {
     content: none;
   }
 }
+
+/* ---------- ajakan memasang APK baru (di dalam aplikasi, bila APK yang terpasang ketinggalan) ---------- */
+#apk-link.shell-update {
+  display: block;
+  max-width: 420px;
+  margin: 12px auto 0;
+  padding: 10px 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+}

@@ -483,8 +483,16 @@ baru, muncul tombol **"Versi baru tersedia · ketuk untuk memperbarui"**.
 
 Supaya APK tahu ke mana harus mengecek, build APK dengan `publishUrl` terisi di
 `build.local.json` (alamat itu disisipkan ke dalam build). Setelah itu, merilis pembaruan cukup
-dengan `.\build.cmd`. Perubahan di sisi native (plugin Capacitor, izin, ikon) tetap membutuhkan
-APK baru.
+dengan `.\build.cmd`. Perubahan di sisi native (plugin Capacitor, izin, ikon aplikasi, layar
+pembuka) tetap membutuhkan APK baru: pembaruan dari layar utama tidak bisa mengganti bagian itu.
+
+Supaya pemain tahu kapan APK-nya perlu dipasang ulang, APK melaporkan **versi cangkangnya** lewat
+user agent WebView (`"appendUserAgent": "AstraShell/2"` di
+[capacitor.config.json](capacitor.config.json)). Bila angka itu lebih kecil dari yang ada di build
+web terbaru (APK lama yang belum melaporkan apa pun dihitung versi 1), lobby di dalam aplikasi
+menampilkan ajakan **"Aplikasi versi baru tersedia … ketuk untuk mengunduh APK, lalu pasang"**
+yang membuka alamat APK di browser HP. **Naikkan angka `AstraShell/N` tiap kali ikon, layar
+pembuka, atau plugin native berubah**, lalu rilis dengan `.\build.cmd -Apk`.
 
 ### `build.cmd` (Windows)
 

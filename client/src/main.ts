@@ -8,7 +8,7 @@ import { connect, type Transport } from './net/transport';
 import { renderPortraits } from './render/portraits';
 import { skillIcon } from './ui/icons';
 import { openLeaderboard, openProfile, openSettings } from './ui/panels';
-import { APP_VERSION, UPDATE_URL, applyUpdate, checkForUpdate, confirmUpdate, isNative } from './update';
+import { APP_VERSION, UPDATE_URL, applyUpdate, checkForUpdate, confirmUpdate, isNative, shellOutdated } from './update';
 import { spellIcon } from './ui/spellIcons';
 import { dailyView } from './account/progress';
 
@@ -535,13 +535,23 @@ setInterval(() => {
   if (!$('lobby').classList.contains('hidden') && updateBtn.classList.contains('hidden')) void lookForUpdate();
 }, 60_000);
 
-// Tautan unduh APK: hanya di versi web, dan hanya jika alamatnya diberikan saat build (VITE_APK_URL).
+// Tautan unduh APK, hanya jika alamatnya diberikan saat build (VITE_APK_URL):
+//  - di web: selalu tampil;
+//  - di dalam APK: hanya bila APK yang terpasang sudah ketinggalan (ikon aplikasi, layar pembuka,
+//    dan plugin native tidak ikut pembaruan dari layar utama, jadi APK-nya perlu dipasang ulang).
 const apkUrl = import.meta.env.VITE_APK_URL as string | undefined;
-if (!isNative && apkUrl) {
+if (apkUrl && (!isNative || shellOutdated())) {
   const link = $<HTMLAnchorElement>('apk-link');
+  // di dalam APK alamat relatif berarti folder lokal, jadi dijadikan alamat hosting
+  const base = isNative && !/^https?:/i.test(apkUrl) ? `${UPDATE_URL}/${apkUrl.replace(/^\.?\//, '')}` : apkUrl;
   // Nomor build ikut di alamatnya: CDN (mis. Cloudflare) menyimpan file .apk berjam-jam, dan
   // tanpa ini pengunjung masih mendapat APK lama setelah yang baru diunggah.
-  link.href = `${apkUrl}${apkUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(APP_VERSION.split('+')[1] ?? APP_VERSION)}`;
+  link.href = `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(APP_VERSION.split('+')[1] ?? APP_VERSION)}`;
+  if (isNative) {
+    // alamat di luar aplikasi dibuka Capacitor di browser HP, yang lalu mengunduh APK-nya
+    link.textContent = 'Aplikasi versi baru tersedia (ikon dan logo baru). Ketuk untuk mengunduh APK, lalu pasang.';
+    link.classList.add('shell-update');
+  }
   link.classList.remove('hidden');
 }
 

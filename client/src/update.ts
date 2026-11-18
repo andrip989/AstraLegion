@@ -10,6 +10,21 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 export const APP_VERSION: string = __APP_VERSION__;
 export const isNative = Capacitor.isNativePlatform();
 
+/**
+ * Cangkang APK = bagian aplikasi yang TIDAK ikut pembaruan dari layar utama: ikon aplikasi, layar
+ * pembuka, dan plugin native. Itu hanya berganti bila APK-nya dipasang ulang. APK melaporkan versi
+ * cangkangnya lewat user agent WebView ("AstraShell/N", lihat capacitor.config.json); APK lama
+ * yang belum melaporkan apa pun dihitung versi 1. Naikkan angka di capacitor.config.json tiap kali
+ * ikon, layar pembuka, atau plugin native berubah.
+ */
+export const SHELL_LATEST: number = __SHELL_LATEST__;
+export function shellVersion(): number {
+  const m = /AstraShell\/(\d+)/.exec(navigator.userAgent);
+  return m ? Number(m[1]) : 1;
+}
+/** APK yang terpasang lebih lama dari cangkang terbaru: perlu dipasang ulang untuk ikon dan bagian native terbaru. */
+export const shellOutdated = (): boolean => isNative && shellVersion() < SHELL_LATEST;
+
 /** Alamat hosting tempat build dipublikasikan (diisi saat build lewat VITE_UPDATE_URL). */
 export const UPDATE_URL = ((import.meta.env.VITE_UPDATE_URL as string | undefined) ?? '').replace(/\/+$/, '');
 const UPDATE_DIR = 'astra-update';

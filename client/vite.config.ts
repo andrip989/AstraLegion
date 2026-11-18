@@ -5,6 +5,10 @@ import { defineConfig, type Plugin } from 'vite';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, '../package.json'), 'utf8')) as { version: string };
+// Versi cangkang APK (ikon, layar pembuka, plugin native) yang dilaporkan APK lewat user agent
+// WebView; diambil dari capacitor.config.json supaya angkanya hanya ditulis di satu tempat.
+const cap = JSON.parse(readFileSync(join(root, '../capacitor.config.json'), 'utf8')) as { android?: { appendUserAgent?: string } };
+const SHELL_LATEST = Number(/AstraShell\/(\d+)/.exec(cap.android?.appendUserAgent ?? '')?.[1] ?? 1);
 // Versi build = versi package + cap waktu UTC yang selalu naik, mis. 0.1.0+202611171030.
 // Client membandingkan angka di belakang "+" dengan version.json di hosting untuk menawarkan update.
 const APP_VERSION = `${pkg.version}+${new Date().toISOString().replace(/\D/g, '').slice(0, 12)}`;
@@ -40,7 +44,7 @@ const CHUNK_SOURCE_LIMIT = 48_000;
 
 export default defineConfig({
   root,
-  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION), __SHELL_LATEST__: String(SHELL_LATEST) },
   plugins: [versionManifest()],
   // path relatif: hasil build bisa ditaruh di subfolder mana pun di hosting, atau di dalam APK
   base: './',
