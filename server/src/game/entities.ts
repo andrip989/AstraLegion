@@ -1,5 +1,5 @@
 // Kelas data entity. Logika perilaku ada di ai.ts / heroLogic.ts / skills/.
-import { xpForLevel, MAX_LEVEL, type EntityKind, type HeroDef, type Team, type Vec2 } from '../../../shared/src';
+import { sumItemStats, xpForLevel, MAX_LEVEL, type EntityKind, type HeroDef, type Team, type Vec2, DEFAULT_SPELL } from '../../../shared/src';
 
 export class Unit {
   id = 0;
@@ -85,6 +85,10 @@ export class Hero extends Unit {
   hpRegen = 0;
   manaRegen = 0;
   cds = [0, 0, 0, 0];
+  /** Statistik pertandingan: damage ke hero lawan, damage diterima, total emas yang didapat. */
+  dmgDealt = 0;
+  dmgTaken = 0;
+  goldEarned = 0;
   kills = 0;
   deaths = 0;
   assists = 0;
@@ -101,6 +105,31 @@ export class Hero extends Unit {
   haste = 1;
   empower = 0; // bonus damage serangan berikutnya
   playerId: string | null = null;
+  /** Id item yang dimiliki (maks. MAX_ITEMS). */
+  items: string[] = [];
+  /** Bonus dari item yang tidak tercakup stat dasar. */
+  cdr = 0;
+  lifesteal = 0;
+  skillPower = 0;
+  /** Waktu selesainya recall (0 = tidak sedang recall). */
+  recallAt = 0;
+  /** Kill hero sejak terakhir tumbang, dan kill beruntun dalam selang pendek. */
+  streak = 0;
+  multi = 0;
+  lastKillAt = -99;
+  /** Berkah Golem aktif sampai waktu ini (bonus damage). */
+  buffUntil = 0;
+  /** Jumlah perintah bermain (gerak, serang, skill, mantra) dari pemiliknya; untuk mengenali pemain yang diam saja. */
+  actions = 0;
+  /** Damage yang baru diterima: [waktu, nama sumber, jumlah] berurutan, untuk rekap saat tumbang. */
+  hits: [number, string, number][] = [];
+  /** Skin warna (indeks di SKINS); hanya untuk tampilan. */
+  skin = 0;
+  /** Sampai waktu ini hero terlihat walau berdiri di semak (baru menyerang / memakai skill). */
+  revealUntil = 0;
+  /** Mantra tempur yang dibawa (id di SPELLS) dan sisa cooldown-nya (detik). */
+  spell = DEFAULT_SPELL;
+  spellCd = 0;
 
   constructor(
     public def: HeroDef,
@@ -126,11 +155,31 @@ export class Hero extends Unit {
     return this.playerId === null;
   }
 
+  /** Hitung ulang stat dari level + item. */
   recalc(): void {
     const n = this.level - 1;
-    this.maxHp = Math.round(this.def.hp + this.def.hpGrowth * n);
-    this.maxMana = Math.round(this.def.mana + this.def.manaGrowth * n);
-    this.attackDamage = this.def.damage + this.def.damageGrowth * n;
+    const it = sumItemStats(this.items);
+    this.maxHp = Math.round(this.def.hp + this.def.hpGrowth * n + it.hp);
+    this.maxMana = Math.round(this.def.mana + this.def.manaGrowth * n + it.mana);
+    this.attackDamage = this.def.damage + this.def.damageGrowth * n + it.damage;
+    this.hpRegen = this.def.hpRegen + it.hpRegen;
+    this.manaRegen = this.def.manaRegen + it.manaRegen;
+    this.moveSpeed = this.def.moveSpeed + it.moveSpeed;
+    this.attackInterval = this.def.attackInterval / (1 + it.attackSpeed);
+    this.cdr = it.cdr;
+    this.lifesteal = it.lifesteal;
+    this.skillPower = it.skillPower;
+  }
+
+  /** Terapkan perubahan daftar item; HP/mana ikut naik sebesar tambahan maksimumnya. */
+  applyItems(): void {
+    const oldHp = this.maxHp;
+    const oldMana = this.maxMana;
+    this.recalc();
+    if (this.alive) {
+      this.hp = Math.max(1, Math.min(this.maxHp, this.hp + Math.max(0, this.maxHp - oldHp)));
+      this.mana = Math.max(0, Math.min(this.maxMana, this.mana + Math.max(0, this.maxMana - oldMana)));
+    }
   }
 
   /** Tambah XP; mengembalikan true jika naik level. */

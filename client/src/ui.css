@@ -1,0 +1,2006 @@
+/* Akun, pengaturan, toko, papan skor, dan elemen HUD tambahan (dimuat setelah style.css). */
+.seg {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #0e1630;
+}
+.seg button {
+  padding: 7px 18px;
+  font-size: 13px;
+  background: transparent;
+  border: 0;
+}
+.seg button.on {
+  color: #111;
+  font-weight: 700;
+  background: var(--gold);
+}
+.hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+.hint.warn {
+  color: var(--gold);
+}
+.hint button {
+  margin-left: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #111;
+  background: var(--gold);
+  border: 0;
+  border-radius: 6px;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- layar masuk / daftar ---------- */
+#auth {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  overflow: auto;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(255, 210, 63, 0.14), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 0% 100%, rgba(79, 155, 255, 0.24), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 100% 100%, rgba(255, 92, 92, 0.2), transparent 70%),
+    radial-gradient(ellipse at 50% 20%, #1c2c5e 0%, #0b1020 62%);
+}
+.auth-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, 100%);
+  margin: auto;
+  padding: 22px 22px 18px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(22, 30, 58, 0.92), rgba(10, 15, 30, 0.95));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px -20px #000;
+}
+.auth-box h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+  background: linear-gradient(180deg, #ffffff 20%, #b9c8ff 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.auth-box h1 span {
+  background: linear-gradient(180deg, #fff3b0 10%, var(--gold) 55%, #e89b1c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.auth-box .tagline {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+}
+.auth-box .seg {
+  align-self: center;
+}
+.auth-box label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--dim);
+}
+.auth-box input {
+  padding: 11px 12px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  background: #0e1630;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.auth-box input:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: -1px;
+}
+#auth-error {
+  min-height: 18px;
+  font-size: 12.5px;
+  color: var(--red);
+}
+#auth-submit {
+  padding: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #111;
+  background: linear-gradient(180deg, #ffe37a, var(--gold) 55%, #f0a91f);
+  border: 0;
+  border-radius: 8px;
+}
+#auth-submit:disabled {
+  opacity: 0.5;
+}
+#auth-guest {
+  padding: 9px;
+  font-size: 13px;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* ---------- bilah akun di lobby ---------- */
+#account-bar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  gap: 8px;
+}
+#account-bar button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+#account-bar .lv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #111;
+  background: var(--gold);
+  border-radius: 50%;
+}
+
+/* ---------- layar tunggu ---------- */
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  background: radial-gradient(ellipse at 50% 40%, #1c2c5e 0%, #0b1020 65%);
+}
+.spinner {
+  width: 46px;
+  height: 46px;
+  border: 4px solid rgba(255, 210, 63, 0.2);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- jendela modal ---------- */
+#modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(4, 6, 14, 0.66);
+  backdrop-filter: blur(3px);
+}
+.modal-box {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: min(640px, 100%);
+  background: linear-gradient(180deg, #1a2446, #0d1328);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px -20px #000;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--line);
+}
+#modal-close,
+#shop-close {
+  width: 30px;
+  height: 30px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+#modal-body {
+  padding: 6px 16px 16px;
+  overflow: auto;
+}
+#modal-body h4 {
+  margin: 14px 0 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13.5px;
+}
+.set-row > span {
+  flex: 1;
+}
+.set-row input[type="range"] {
+  flex: 1.2;
+  accent-color: var(--gold);
+}
+.set-row output {
+  width: 28px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.set-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--gold);
+}
+.set-row button {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: #0e1630;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* profil */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.profile-head h3 {
+  margin: 0 0 5px;
+  font-size: 19px;
+}
+.lv-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #111;
+  background: linear-gradient(180deg, #ffe37a, #f0a91f);
+  border-radius: 50%;
+  box-shadow: 0 0 20px -4px var(--gold);
+}
+.xpbar {
+  height: 7px;
+  margin: 3px 0;
+  overflow: hidden;
+  background: #0a0f1f;
+  border-radius: 4px;
+}
+.xpbar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #f0a91f, var(--gold));
+}
+.profile-head small,
+#gameover-stats small {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.stat-grid > div {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+.stat-grid b {
+  font-size: 18px;
+}
+.stat-grid span {
+  font-size: 11px;
+  color: var(--dim);
+}
+.plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+}
+.plain-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.plain-list li:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.035);
+}
+.plain-list span {
+  color: var(--dim);
+}
+.history li.win b {
+  color: #7be495;
+}
+.history li.lose b {
+  color: var(--red);
+}
+
+/* ---------- HUD: pojok kanan atas ---------- */
+#top-right {
+  top: max(8px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#mode-badge {
+  position: static;
+}
+#top-right button {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  pointer-events: auto;
+}
+#fps {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #7be495;
+  background: var(--panel);
+  border-radius: 6px;
+}
+#feed {
+  top: 46px;
+}
+
+/* ---------- item, toko, recall ---------- */
+#actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#items {
+  display: flex;
+  gap: 5px;
+  pointer-events: auto;
+}
+.item {
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  color: var(--gold);
+  background: linear-gradient(180deg, #232f58, #121a38);
+  border: 1px solid rgba(255, 210, 63, 0.55);
+  border-radius: 8px;
+}
+.item .ico {
+  width: 100%;
+  height: 100%;
+}
+.item.empty {
+  background: rgba(10, 15, 31, 0.7);
+  border: 1px dashed var(--line);
+}
+#side-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+}
+#side-btns button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 9px;
+  color: var(--text);
+  background: linear-gradient(180deg, #1a2548, #0d1430);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#side-btns button .ico {
+  width: 100%;
+  height: 100%;
+}
+#side-btns button span {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--dim);
+}
+#shop-btn.ready {
+  color: var(--gold);
+  border-color: var(--gold);
+  animation: shop-pulse 1.4s ease-in-out infinite;
+}
+#shop-btn.on {
+  background: var(--gold);
+  color: #111;
+}
+@keyframes shop-pulse {
+  50% {
+    box-shadow: 0 0 14px 0 rgba(255, 210, 63, 0.6);
+  }
+}
+#shop {
+  left: 10px;
+  top: 76px;
+  bottom: 130px;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  padding: 10px;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px -12px #000;
+  pointer-events: auto;
+}
+.shop-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+#shop-gold {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+}
+#shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  overflow: auto;
+}
+.shop-item {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  align-items: center;
+  padding: 6px 8px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.shop-item:hover {
+  border-color: var(--gold);
+}
+.shop-item .ico {
+  grid-row: 1 / span 2;
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  color: var(--gold);
+  background: #121a38;
+  border-radius: 8px;
+}
+.shop-item .nm {
+  font-size: 13px;
+  font-weight: 700;
+}
+.shop-item .ds {
+  grid-column: 2;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--dim);
+}
+.shop-item .cost {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.shop-item.off {
+  opacity: 0.5;
+}
+.shop-item.poor .cost {
+  color: var(--red);
+}
+
+/* ---------- papan skor ---------- */
+#scoreboard {
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(600px, 94vw);
+  padding: 12px;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px -12px #000;
+}
+.board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.board caption {
+  padding: 2px 6px 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.board .t0 caption {
+  color: var(--blue);
+}
+.board .t1 caption {
+  color: var(--red);
+}
+.board td {
+  padding: 5px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.board td.lv {
+  width: 26px;
+  font-weight: 800;
+  color: var(--gold);
+}
+.board td.kda {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.board td.its i {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 2px;
+  color: var(--gold);
+  vertical-align: middle;
+}
+.board td.its .ico {
+  width: 100%;
+  height: 100%;
+}
+.board tr.me td.nm {
+  color: var(--gold);
+  font-weight: 700;
+}
+.board tr.dead {
+  opacity: 0.5;
+}
+.board small {
+  color: var(--dim);
+}
+
+/* ---------- penyaluran recall ---------- */
+#channel {
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: 220px;
+  padding: 7px 10px 9px;
+  font-size: 12px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#channel > div {
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  background: #0a0f1f;
+  border-radius: 3px;
+}
+#channel-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #5aa9ff, #bfe4ff);
+}
+
+/* ---------- akhir pertandingan ---------- */
+#gameover {
+  min-width: 260px;
+}
+#gameover-stats {
+  margin: 6px 0 8px;
+  font-size: 13.5px;
+}
+.go-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 2px 0;
+}
+.go-row span {
+  color: var(--dim);
+}
+
+@media (pointer: coarse) {
+  #bottom {
+    align-items: flex-end;
+  }
+  #actions {
+    margin-left: auto;
+    align-items: flex-end;
+  }
+  .item {
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+  }
+  #side-btns button span {
+    display: none;
+  }
+  #shop {
+    top: 46px;
+    bottom: 8px;
+    left: max(8px, env(safe-area-inset-left));
+    width: min(300px, 46vw);
+  }
+  #top-right {
+    left: calc(max(8px, env(safe-area-inset-left)) + 168px);
+    right: auto;
+  }
+  #mode-badge {
+    display: none;
+  }
+  #channel {
+    bottom: 96px;
+  }
+}
+/* ---------- beli-cepat item rekomendasi ---------- */
+#quickbuy {
+  right: 10px;
+  top: 36%;
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  grid-template-rows: auto auto auto auto;
+  column-gap: 9px;
+  align-items: center;
+  width: 228px;
+  padding: 8px 10px 9px;
+  text-align: left;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px -12px #000;
+  pointer-events: auto;
+  opacity: 0.82;
+  transition:
+    opacity 0.2s,
+    border-color 0.2s;
+}
+#qb-icon {
+  grid-row: 1 / span 3;
+  width: 46px;
+  height: 46px;
+  padding: 7px;
+  color: var(--dim);
+  background: #121a38;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#qb-icon .ico {
+  width: 100%;
+  height: 100%;
+}
+.qb-label {
+  grid-column: 2 / span 2;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+#qb-name {
+  grid-column: 2;
+  font-size: 14px;
+}
+#qb-cost {
+  grid-column: 3;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--dim);
+}
+#qb-cost::before {
+  content: '● ';
+  font-size: 10px;
+}
+#qb-desc {
+  grid-column: 2 / span 2;
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--dim);
+}
+#qb-state {
+  grid-column: 1 / span 3;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.qb-bar {
+  grid-column: 1 / span 3;
+  height: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+  background: #0a0f1f;
+  border-radius: 2px;
+}
+#qb-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #a06a12, var(--gold));
+  transition: width 0.2s linear;
+}
+/* emas sudah cukup: menyala dan berdenyut */
+#quickbuy.ready {
+  opacity: 1;
+  border-color: var(--gold);
+  box-shadow:
+    0 10px 28px -12px #000,
+    0 0 18px -2px rgba(255, 210, 63, 0.75);
+  animation: qb-glow 1.3s ease-in-out infinite;
+}
+#quickbuy.ready #qb-icon {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+#quickbuy.ready #qb-cost,
+#quickbuy.ready #qb-state,
+#quickbuy.ready .qb-label {
+  color: var(--gold);
+}
+#quickbuy.ready #qb-state {
+  font-weight: 700;
+}
+#quickbuy.far {
+  border-color: rgba(255, 210, 63, 0.5);
+}
+#quickbuy.pop {
+  animation:
+    qb-pop 0.55s ease-out,
+    qb-glow 1.3s ease-in-out 0.55s infinite;
+}
+@keyframes qb-glow {
+  50% {
+    box-shadow:
+      0 10px 28px -12px #000,
+      0 0 30px 2px rgba(255, 210, 63, 0.95);
+  }
+}
+@keyframes qb-pop {
+  0% {
+    transform: scale(0.8) translateX(30px);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: none;
+  }
+}
+.shop-item {
+  position: relative;
+}
+.shop-item .rec {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  min-width: 15px;
+  height: 15px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+  color: #111;
+  background: var(--gold);
+  border-radius: 50%;
+}
+.shop-item.next {
+  border-color: var(--gold);
+  background: rgba(255, 210, 63, 0.1);
+}
+
+/* ---------- pengumuman besar ---------- */
+#announce {
+  left: 50%;
+  top: 15%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 320px;
+  padding: 8px 46px 10px;
+  text-align: center;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, rgba(8, 12, 26, 0.86) 18%, rgba(8, 12, 26, 0.86) 82%, transparent);
+}
+#announce b {
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1.1;
+  color: var(--gold);
+  text-shadow: 0 0 22px rgba(255, 210, 63, 0.75);
+}
+#announce span {
+  font-size: 13.5px;
+  color: var(--text);
+}
+#announce.good b {
+  color: #8fd0ff;
+  text-shadow: 0 0 22px rgba(79, 155, 255, 0.85);
+}
+#announce.bad b {
+  color: #ff8a8a;
+  text-shadow: 0 0 22px rgba(255, 92, 92, 0.85);
+}
+#announce.show {
+  animation: announce-in 2.6s ease-out both;
+}
+@keyframes announce-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.5);
+  }
+  9% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- tepi layar memerah saat sekarat, layar kelabu saat tewas ---------- */
+#hurt {
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 44%, rgba(210, 20, 20, 0.72) 100%);
+  transition: opacity 0.25s;
+}
+#hurt.pulse {
+  animation: hurt-pulse 0.9s ease-in-out infinite;
+}
+#hurt.flash {
+  animation: hurt-flash 0.35s ease-out;
+}
+@keyframes hurt-pulse {
+  50% {
+    filter: brightness(1.7);
+  }
+}
+@keyframes hurt-flash {
+  0% {
+    opacity: 0.9;
+  }
+}
+#game {
+  transition: filter 0.6s;
+}
+body.dead #game {
+  filter: grayscale(0.85) brightness(0.78);
+}
+
+/* ---------- petunjuk pemain baru ---------- */
+#tip {
+  left: 50%;
+  bottom: 136px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 92vw);
+  padding: 9px 10px 9px 14px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px -12px #000;
+  pointer-events: auto;
+}
+#tip.show {
+  animation: tip-in 0.4s ease-out;
+}
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+}
+#tip small {
+  color: var(--dim);
+  white-space: nowrap;
+}
+#tip button {
+  width: 26px;
+  height: 26px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+}
+
+@media (pointer: coarse) {
+  #quickbuy {
+    top: 30%;
+    right: max(8px, env(safe-area-inset-right));
+    grid-template-columns: 38px auto;
+    width: auto;
+    padding: 6px 8px;
+  }
+  #qb-icon {
+    width: 38px;
+    height: 38px;
+    padding: 6px;
+  }
+  .qb-label,
+  #qb-desc,
+  #qb-name {
+    display: none;
+  }
+  #qb-cost {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+  #qb-state {
+    display: none;
+  }
+  #announce b {
+    font-size: 24px;
+  }
+  #tip {
+    bottom: 84px;
+    font-size: 12.5px;
+  }
+}
+@media (max-height: 430px) {
+  .auth-box {
+    padding: 12px 16px;
+    gap: 6px;
+  }
+  .auth-box h1 {
+    font-size: 22px;
+  }
+  .auth-box .tagline,
+  .auth-box .hint {
+    display: none;
+  }
+}
+
+/* ---------- obrolan ---------- */
+#chat {
+  left: 10px;
+  bottom: 12px;
+  width: min(360px, 30vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+#chat-log {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-height: 190px;
+  overflow: hidden;
+}
+#chat-log div {
+  padding: 2px 8px;
+  line-height: 1.35;
+  background: rgba(8, 12, 28, 0.66);
+  border-radius: 6px;
+  text-shadow: 0 1px 2px #000;
+  overflow-wrap: anywhere;
+  animation: fadein 0.2s;
+}
+/* pesan lama disembunyikan, tetapi terlihat lagi selama kotak tulis terbuka */
+#chat-log div.old {
+  display: none;
+}
+#chat.open #chat-log {
+  overflow-y: auto;
+  pointer-events: auto;
+}
+#chat.open #chat-log div.old {
+  display: block;
+  opacity: 0.72;
+}
+#chat-log i {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+}
+#chat-log i.all {
+  color: var(--gold);
+}
+#chat-log i.team {
+  color: #7dffb0;
+}
+#chat-log b.blue {
+  color: #8fd0ff;
+}
+#chat-log b.red {
+  color: #ff8a8a;
+}
+#chat-form {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+#chat-form button {
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #7dffb0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#chat-scope {
+  min-width: 64px;
+}
+#chat-scope.all {
+  color: var(--gold);
+}
+#chat-send {
+  color: var(--text) !important;
+}
+#chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  background: rgba(8, 12, 28, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+}
+#chat-input:focus {
+  border-color: rgba(140, 180, 255, 0.7);
+}
+@media (pointer: coarse) {
+  /* kiri-bawah dipakai panel status: log di atasnya, dan kotak tulis pindah ke atas layar
+     supaya tidak tertutup keyboard */
+  #chat {
+    left: max(8px, env(safe-area-inset-left));
+    bottom: 104px;
+    width: min(300px, 44vw);
+    font-size: 11.5px;
+  }
+  #chat-log {
+    max-height: 84px;
+  }
+  #chat.open {
+    top: 44px;
+    bottom: auto;
+    left: calc(max(8px, env(safe-area-inset-left)) + 126px);
+    width: min(360px, 52vw);
+  }
+  #chat.open #chat-log {
+    max-height: 64px;
+  }
+}
+
+/* ---------- kontrol layar sentuh ----------
+   Joystick gerak di kiri bawah; tombol serang besar di kanan bawah dengan empat skill melingkar
+   di sekitarnya; emas, toko, recall, dan item di tengah bawah. Panel status (potret, HP, mana)
+   tidak ditampilkan: HP dan mana sudah ada di atas kepala hero. */
+#joy-zone,
+#attack-btn {
+  display: none;
+}
+@media (pointer: coarse) {
+  :root {
+    --skill: 58px;
+    --atk: 88px;
+    /* jarak tombol serang dari tepi kanan / bawah, dan jari-jari lingkaran skill */
+    --pad-r: calc(max(14px, env(safe-area-inset-right)) + 8px);
+    --pad-b: 18px;
+    --arc: 124px;
+  }
+  #joy-zone {
+    display: block;
+    left: 0;
+    bottom: 0;
+    width: 44vw;
+    height: 58vh;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+  }
+  #joystick {
+    position: absolute;
+    left: calc(max(16px, env(safe-area-inset-left)) + 10px);
+    bottom: 20px;
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(120, 160, 255, 0.12) 0%, rgba(12, 18, 36, 0.45) 72%);
+    border: 2px solid rgba(140, 170, 255, 0.4);
+    box-shadow: inset 0 0 18px rgba(79, 155, 255, 0.25);
+    opacity: 0.7;
+    transition: opacity 0.15s;
+  }
+  #joystick.active {
+    opacity: 1;
+  }
+  #joy-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 54px;
+    height: 54px;
+    margin: -27px 0 0 -27px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #a9cbff, #3a63c9 72%);
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 4px 12px -2px #000;
+  }
+  #attack-btn {
+    display: grid;
+    place-items: center;
+    right: var(--pad-r);
+    bottom: var(--pad-b);
+    width: var(--atk);
+    height: var(--atk);
+    padding: 21px;
+    color: #fff;
+    background: radial-gradient(circle at 40% 30%, #ff9a78, #c62828 72%);
+    border: 3px solid rgba(255, 224, 205, 0.8);
+    border-radius: 50%;
+    box-shadow:
+      0 8px 20px -6px #000,
+      0 0 18px -4px #ff5c5c;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+  }
+  #attack-btn.held {
+    transform: scale(0.93);
+    filter: brightness(1.25);
+  }
+  #attack-btn .ico {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* skill: titik jangkar di pusat tombol serang, tiap tombol di busur 2° / 32° / 62° / 92° */
+  #skills {
+    position: fixed;
+    right: calc(var(--pad-r) + var(--atk) / 2);
+    bottom: calc(var(--pad-b) + var(--atk) / 2);
+    display: block;
+    width: 0;
+    height: 0;
+  }
+  .skill {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .skill:nth-child(1) {
+    right: calc(var(--arc) * 0.999 - var(--skill) / 2);
+    bottom: calc(var(--arc) * 0.035 - var(--skill) / 2);
+  }
+  .skill:nth-child(2) {
+    right: calc(var(--arc) * 0.848 - var(--skill) / 2);
+    bottom: calc(var(--arc) * 0.53 - var(--skill) / 2);
+  }
+  .skill:nth-child(3) {
+    right: calc(var(--arc) * 0.469 - var(--skill) / 2);
+    bottom: calc(var(--arc) * 0.883 - var(--skill) / 2);
+  }
+  .skill:nth-child(4) {
+    right: calc(var(--arc) * -0.035 - var(--skill) / 2);
+    bottom: calc(var(--arc) * 0.999 - var(--skill) / 2);
+  }
+
+  /* tengah bawah: baris emas / KDA / wave, lalu toko + recall + item */
+  #bottom {
+    left: 50%;
+    right: auto;
+    width: 272px;
+    margin-left: -136px;
+    padding: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 5px 8px;
+  }
+  #status {
+    order: 1;
+    flex: 0 0 100%;
+    display: flex;
+    justify-content: center;
+    width: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+  #status > :not(.econ) {
+    display: none;
+  }
+  .econ {
+    gap: 14px;
+    margin: 0;
+    padding: 3px 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  #side-btns {
+    order: 2;
+    flex-direction: row;
+  }
+  #side-btns button {
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+  }
+  #actions {
+    order: 3;
+    margin-left: 0;
+  }
+  #items {
+    gap: 3px;
+  }
+  .item {
+    width: 26px;
+    height: 26px;
+    padding: 3px;
+  }
+
+  /* sisanya menyingkir dari dua jempol */
+  #quickbuy {
+    top: auto;
+    bottom: calc(var(--pad-b) + var(--atk) / 2 + var(--arc) + var(--skill) / 2 + 10px);
+  }
+  #feed {
+    top: 6px;
+  }
+  #feed div:nth-last-child(n + 4) {
+    display: none;
+  }
+  #chat,
+  #chat.open {
+    top: 44px;
+    bottom: auto;
+    left: calc(max(8px, env(safe-area-inset-left)) + 126px);
+    width: min(360px, 46vw);
+  }
+  #chat-log,
+  #chat.open #chat-log {
+    max-height: 64px;
+  }
+  #tip {
+    bottom: 92px;
+    max-width: min(420px, 46vw);
+  }
+  #channel {
+    bottom: 100px;
+  }
+}
+@media (pointer: coarse) {
+  /* baris atas: minimap + kunci kamera di kiri, skor di tengah, tombol menu di pojok kanan;
+     kartu rekomendasi di bawah minimap, pesan pertandingan di bawah tombol menu */
+  #top-right {
+    left: auto;
+    right: max(8px, env(safe-area-inset-right));
+  }
+  #feed {
+    top: 44px;
+  }
+  #quickbuy {
+    top: 120px;
+    bottom: auto;
+    left: max(8px, env(safe-area-inset-left));
+    right: auto;
+  }
+  #joy-zone {
+    height: 50vh;
+  }
+}
+
+/* ---------- papan skor: kepala kolom, angka, MVP; layar akhir pertandingan ---------- */
+.board th {
+  padding: 1px 6px 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--dim);
+}
+.board td.num {
+  font-variant-numeric: tabular-nums;
+  color: #c9d6ff;
+}
+.board td.gold {
+  color: var(--gold);
+}
+.board .mvp {
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border-radius: 999px;
+  box-shadow: 0 0 10px -2px var(--gold);
+}
+#gameover {
+  top: 50%;
+  width: min(640px, 96vw);
+  max-height: 94vh;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+#gameover-board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 6px;
+  text-align: left;
+}
+#gameover-board:empty {
+  display: none;
+}
+
+/* ---------- pesan cepat ke tim ---------- */
+#ping-btn.on {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px -2px var(--gold);
+}
+#ping-menu {
+  top: 46px;
+  right: max(10px, env(safe-area-inset-right));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: min(330px, 80vw);
+  padding: 8px;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px -12px #000;
+  pointer-events: auto;
+  z-index: 3;
+}
+#ping-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  background: rgba(8, 12, 28, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+#ping-menu button i,
+#chat-log u {
+  flex: none;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+#chat-log u {
+  width: 8px;
+  height: 8px;
+  text-decoration: none;
+}
+#ping-menu button small {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* ---------- bidik skill dengan menyeret tombolnya ---------- */
+.skill.aiming {
+  filter: brightness(1.35);
+  transform: scale(1.08);
+}
+#aim-cancel {
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd0d0;
+  background: rgba(60, 12, 16, 0.85);
+  border: 2px solid rgba(255, 92, 92, 0.6);
+  border-radius: 999px;
+}
+#aim-cancel.on {
+  color: #fff;
+  background: rgba(200, 36, 36, 0.95);
+  border-color: #fff;
+}
+@media (pointer: coarse) {
+  #aim-cancel {
+    left: auto;
+    right: var(--pad-r);
+    bottom: calc(var(--pad-b) + var(--atk) / 2 + var(--arc) + var(--skill) / 2 + 12px);
+    transform: none;
+  }
+  #ping-menu button small {
+    display: none;
+  }
+  .board .hr,
+  #gameover p {
+    display: none;
+  }
+  #gameover h2 {
+    font-size: 26px;
+  }
+  #gameover {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+}
+/* lebar kolom tetap supaya tabel kedua tim sejajar */
+.board table {
+  table-layout: fixed;
+}
+.board th.lv {
+  width: 26px;
+}
+.board th.hr {
+  width: 118px;
+}
+.board th.kd {
+  width: 92px;
+}
+.board th.nu {
+  width: 64px;
+}
+.board th.it {
+  width: 150px;
+}
+.board th.rs {
+  width: 36px;
+}
+.board td.nm {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (pointer: coarse) {
+  .board th.it {
+    width: 96px;
+  }
+  .board th.kd {
+    width: 78px;
+  }
+  .board th.nu {
+    width: 54px;
+  }
+}
+
+/* ---------- logo game (client/public/logo.svg) ---------- */
+img.logo {
+  display: block;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
+}
+.auth-box .logo {
+  width: 92px;
+  height: 92px;
+  margin-bottom: 2px;
+}
+.lobby-box .logo {
+  width: clamp(72px, 11vh, 116px);
+  height: clamp(72px, 11vh, 116px);
+  margin-bottom: 6px;
+}
+#loading .logo {
+  width: min(168px, 34vh);
+  height: min(168px, 34vh);
+  margin-bottom: 6px;
+  animation: logo-breathe 2.4s ease-in-out infinite;
+}
+@keyframes logo-breathe {
+  50% {
+    transform: scale(1.04);
+    filter: drop-shadow(0 10px 30px rgba(255, 154, 60, 0.45));
+  }
+}
+/* layar pendek (HP mendatar): judul teks sudah ada di pita logo, jadi ruangnya dihemat */
+@media (max-height: 430px) {
+  .auth-box .logo {
+    width: 58px;
+    height: 58px;
+  }
+  .lobby-box .logo {
+    width: 54px;
+    height: 54px;
+    margin-bottom: 2px;
+  }
+}
+@media (max-height: 430px) {
+  /* lobby di HP mendatar: logo sebaris dengan judul, supaya tidak mendorong kartu hero ke bawah */
+  .lobby-box .logo {
+    display: inline-block;
+    width: 46px;
+    height: 46px;
+    margin: 0 12px 0 0;
+    vertical-align: middle;
+  }
+  .lobby-box h1 {
+    display: inline-block;
+    vertical-align: middle;
+  }
+}
+@media (max-height: 430px) {
+  /* ...dan rata kiri dengan judul lebih kecil, supaya tidak menimpa tombol akun di kanan atas */
+  .lobby-head {
+    text-align: left;
+    padding-left: 4px;
+  }
+  .lobby-box h1 {
+    font-size: 30px;
+  }
+  .lobby-head .tagline {
+    margin: 2px 0 10px;
+    font-size: 12px;
+  }
+}
+@media (max-height: 430px) and (max-width: 720px) {
+  .lobby-box h1 {
+    font-size: 23px;
+    letter-spacing: 0.1em;
+  }
+}
+
+/* ---------- lobby: pilihan tim, kode room, undangan ---------- */
+.lobby-opts {
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.lobby-opts .seg button {
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+#room-input {
+  width: 190px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#room-input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+}
+#invite-btn {
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#room-hint {
+  min-height: 16px;
+  margin: 6px auto 2px;
+  max-width: 640px;
+  font-size: 12px;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- info jaringan (room + latensi) dan emote ---------- */
+#net {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  background: var(--panel);
+  border-radius: 6px;
+}
+#net.good {
+  color: #7be495;
+}
+#net.mid {
+  color: var(--gold);
+}
+#net.bad {
+  color: #ff8a8a;
+}
+#ping-menu .emotes {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+#ping-menu .emotes button {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 0;
+  font-size: 22px;
+}
+
+/* layar yang tidak tinggi (laptop): logo sebaris dengan judul supaya seluruh lobby muat tanpa menggulir */
+@media (max-height: 860px) and (min-height: 431px) {
+  .lobby-box .logo {
+    display: inline-block;
+    width: 62px;
+    height: 62px;
+    margin: 0 16px 0 0;
+    vertical-align: middle;
+  }
+  .lobby-box h1 {
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .lobby-head .tagline {
+    margin: 2px 0 12px;
+  }
+}
+@media (max-height: 430px) {
+  .lobby-opts {
+    margin-top: 6px;
+  }
+  #room-input {
+    width: 150px;
+  }
+}
+
+/* ---------- spanduk "menyambung ulang" ---------- */
+#reconnect {
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffe9b0;
+  background: rgba(30, 20, 8, 0.9);
+  border: 1px solid rgba(255, 210, 63, 0.55);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px -10px #000;
+  z-index: 4;
+}
+#reconnect .spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
+}
+
+/* ---------- mantra tempur: tombol kelima di samping skill, dan pemilihnya di lobby ---------- */
+.skill.spell {
+  width: calc(var(--skill) * 0.8);
+  height: calc(var(--skill) * 0.8);
+  align-self: flex-end;
+  border-radius: 50%;
+  border-style: double;
+  border-width: 4px;
+}
+.skill.spell .spell-ico {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.skill.spell .spell-ico .ico {
+  position: static;
+  width: 58%;
+  height: 58%;
+}
+.opt-label {
+  align-self: center;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+#spell-pick button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sc);
+}
+#spell-pick button.on {
+  color: #201400;
+}
+#spell-pick .ico {
+  width: 18px;
+  height: 18px;
+}
+#spell-hint {
+  min-height: 16px;
+  margin: 6px auto 0;
+  max-width: 640px;
+  font-size: 12px;
+  color: var(--dim);
+}
+@media (pointer: coarse) {
+  /* layar sentuh: di busur luar, di antara W dan E */
+  .skill.spell {
+    width: 46px;
+    height: 46px;
+    right: calc((var(--arc) + 58px) * 0.682 - 23px);
+    bottom: calc((var(--arc) + 58px) * 0.731 - 23px);
+  }
+  .skill.spell .key {
+    display: none;
+  }
+}
+
+/* ---------- misi harian & pencapaian ---------- */
+#daily-line {
+  display: block;
+  margin: 0 auto 10px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  color: #ffe9b0;
+  background: rgba(255, 210, 63, 0.1);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 999px;
+}
+.plain-list.goals li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  align-items: baseline;
+}
+.plain-list.goals li span {
+  font-size: 12px;
+  color: var(--dim);
+  text-align: right;
+}
+.plain-list.goals li .xpbar {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin: 2px 0 0;
+}
+.plain-list.goals li.done b {
+  color: var(--gold);
+}
+.plain-list.goals li.done .xpbar > div {
+  background: var(--gold);
+}
+.go-row.bonus b {
+  color: var(--gold);
+}
+@media (max-height: 430px) {
+  #daily-line {
+    margin-bottom: 6px;
+    padding: 3px 12px;
+    font-size: 11.5px;
+  }
+}
+
+/* ---------- skin warna di kartu hero ---------- */
+.hero-card .skins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.skins span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.skins span i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hc);
+  filter: hue-rotate(var(--hue)) brightness(var(--lum));
+}
+.skins span.on {
+  color: #201400;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.skins span.locked {
+  opacity: 0.55;
+}
+.skins small {
+  font-size: 10px;
+}
+
+/* ---------- layar tumbang & kembali ke lobby ---------- */
+#respawn {
+  text-align: center;
+}
+#respawn-by {
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: #ffb4b4;
+}
+#respawn-by:empty {
+  display: none;
+}
+#spectate-btn,
+#gameover-lobby {
+  margin-top: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(8, 12, 28, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  pointer-events: auto;
+}
+#gameover-lobby {
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+}
+@media (max-height: 430px) {
+  .hero-card .skins {
+    margin-top: 4px;
+  }
+  .skins span {
+    padding: 1px 6px;
+    font-size: 10.5px;
+  }
+}
+
+/* ---------- rekap damage saat tumbang & peringatan tower ---------- */
+#respawn-recap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  justify-content: center;
+  max-width: 360px;
+  margin: 4px auto 6px;
+  font-size: 12px;
+}
+#respawn-recap:empty {
+  display: none;
+}
+#respawn-recap span {
+  padding: 2px 8px;
+  color: #d8def0;
+  background: rgba(8, 12, 28, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+#respawn #respawn-recap b {
+  margin-left: 3px;
+  font-size: inherit;
+  color: #ff8f8f;
+}
+#tower-warn {
+  position: absolute;
+  top: 27%;
+  left: 50%;
+  padding: 5px 16px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgba(190, 28, 28, 0.82);
+  border: 1px solid #ff8a8a;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  animation: tower-warn 0.45s ease-in-out infinite alternate;
+}
+@keyframes tower-warn {
+  from {
+    box-shadow: 0 0 0 rgba(255, 60, 60, 0);
+  }
+  to {
+    box-shadow: 0 0 18px rgba(255, 60, 60, 0.85);
+  }
+}
+@media (pointer: coarse) {
+  #tower-warn {
+    top: 22%;
+    padding: 4px 12px;
+    font-size: 13px;
+  }
+  #respawn-recap {
+    font-size: 11px;
+  }
+}
+#respawn-recap::before {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--muted, #9aa3c0);
+  content: 'Damage diterima (10 detik terakhir)';
+}
+#respawn-recap:empty::before {
+  content: none;
+}
+@media (pointer: coarse) {
+  /* di HP spanduk pengumuman ada di atas; peringatan tower pindah ke bawah hero */
+  #tower-warn {
+    top: 63%;
+  }
+}
+@media (max-height: 430px) {
+  #respawn-recap::before {
+    content: none;
+  }
+}

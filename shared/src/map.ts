@@ -102,3 +102,40 @@ export const CAMPS: CampSpot[] = [
   { x: 88, z: 80, big: false },
   { x: 71, z: 71, big: true },
 ];
+
+/**
+ * Semak persembunyian. Hero yang berdiri di dalamnya tidak terlihat (dan tidak bisa dijadikan
+ * sasaran serangan biasa) oleh tim lawan, kecuali: ada hero lawan di semak yang sama, ada unit
+ * lawan yang sangat dekat, atau ia baru saja menyerang / memakai skill. Skill area tetap mengenainya.
+ */
+export interface BushSpot {
+  x: number;
+  z: number;
+  r: number;
+}
+
+// Separuh peta (sisi kiri-atas garis tengah) lalu dicerminkan terhadap titik pusat; tiap titik juga
+// punya pasangan transpose-nya, sehingga kedua tim mendapat semak yang setara.
+const BUSH_HALF: BushSpot[] = [
+  { x: 53, z: 58, r: 2.8 }, // tepi lane tengah
+  { x: 58, z: 53, r: 2.8 },
+  { x: 18.8, z: 18.8, r: 2.8 }, // sudut lane atas
+  { x: 18.2, z: 46, r: 2.5 }, // sisi dalam lane atas
+  { x: 46, z: 18.2, r: 2.5 },
+];
+export const BUSHES: BushSpot[] = [...BUSH_HALF, ...BUSH_HALF.map((b) => ({ x: MAP_SIZE - b.x, z: MAP_SIZE - b.z, r: b.r }))];
+
+/** Indeks semak yang memuat titik (x, z), atau -1. */
+export function bushAt(x: number, z: number): number {
+  for (let i = 0; i < BUSHES.length; i++) {
+    const b = BUSHES[i];
+    const dx = x - b.x;
+    const dz = z - b.z;
+    if (dx * dx + dz * dz <= b.r * b.r) return i;
+  }
+  return -1;
+}
+
+/** Unit lawan sedekat ini (unit) membongkar persembunyian, dan lamanya hero terlihat setelah menyerang (detik). */
+export const BUSH_REVEAL_RANGE = 2.8;
+export const BUSH_REVEAL_TIME = 1.5;

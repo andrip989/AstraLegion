@@ -10,3 +10,6 @@ android/
 build.local.json
 .claude/
 *.code-workspace
+
+# Data akun pemain yang ditulis server (DATA_DIR bawaan saat dijalankan dari folder repo)
+astra-legion-data/

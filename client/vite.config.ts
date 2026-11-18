@@ -1,12 +1,47 @@
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
+const pkg = JSON.parse(readFileSync(join(root, '../package.json'), 'utf8')) as { version: string };
+// Versi build = versi package + cap waktu UTC yang selalu naik, mis. 0.1.0+202611171030.
+// Client membandingkan angka di belakang "+" dengan version.json di hosting untuk menawarkan update.
+const APP_VERSION = `${pkg.version}+${new Date().toISOString().replace(/\D/g, '').slice(0, 12)}`;
+
+/** Tulis version.json (versi + daftar semua file build) ke folder hasil build. */
+function versionManifest(): Plugin {
+  let outDir = '';
+  return {
+    name: 'astra-version-manifest',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const files: string[] = [];
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          const p = join(dir, name);
+          if (statSync(p).isDirectory()) walk(p);
+          else files.push(relative(outDir, p).replace(/\\/g, '/'));
+        }
+      };
+      walk(outDir);
+      const list = files.filter((f) => f !== 'version.json').sort();
+      writeFileSync(join(outDir, 'version.json'), JSON.stringify({ version: APP_VERSION, files: list }, null, 1));
+    },
+  };
+}
 
 // Batas ukuran sumber (sebelum minify) per chunk. Hasil build dipecah menjadi banyak file kecil
 // karena sebagian hosting (mis. unggah lewat WebDAV) gagal menerima file besar.
 const CHUNK_SOURCE_LIMIT = 48_000;
 
 export default defineConfig({
-  root: fileURLToPath(new URL('.', import.meta.url)),
+  root,
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
+  plugins: [versionManifest()],
   // path relatif: hasil build bisa ditaruh di subfolder mana pun di hosting, atau di dalam APK
   base: './',
   resolve: {
@@ -23,6 +58,8 @@ export default defineConfig({
         strictExecutionOrder: true,
         codeSplitting: {
           groups: [
+            // klip suara announcer: chunk sendiri supaya baru diunduh saat dibutuhkan
+            { name: 'voice', test: /[\\/]audio[\\/]voice[\\/]/, maxSize: CHUNK_SOURCE_LIMIT, priority: 4 },
             { name: 'three', test: /node_modules[\\/]three[\\/]/, maxSize: CHUNK_SOURCE_LIMIT, priority: 3 },
             { name: 'vendor', test: /node_modules/, maxSize: CHUNK_SOURCE_LIMIT, priority: 2 },
             { name: 'sim', test: /[\\/]server[\\/]src[\\/]/, maxSize: CHUNK_SOURCE_LIMIT, priority: 1 },

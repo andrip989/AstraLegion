@@ -9,7 +9,7 @@ export const novaStrikerSkills: Record<string, SkillHandler> = {
     const z1 = hero.z + dirZ * def.range;
     game.emit({ k: 'beam', x0: hero.x, z0: hero.z, x1, z1, w: def.width!, c: CYAN });
     for (const u of game.enemiesInLine(hero.team, hero.x, hero.z, x1, z1, def.width! / 2)) {
-      game.damage(hero, u, 85 + 14 * lvl);
+      game.damage(hero, u, 78 + 13 * lvl);
     }
   },
 
@@ -51,7 +51,7 @@ export const novaStrikerSkills: Record<string, SkillHandler> = {
       game.emit({ k: 'beam', x0, z0, x1, z1, w: def.width!, c: 0xffffff });
       game.emit({ k: 'beam', x0, z0, x1, z1, w: def.width! * 1.6, c: CYAN });
       for (const u of game.enemiesInLine(hero.team, x0, z0, x1, z1, def.width! / 2)) {
-        game.damage(hero, u, 220 + 40 * lvl);
+        game.damage(hero, u, 200 + 36 * lvl);
       }
     });
   },

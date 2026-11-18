@@ -1,7 +1,7 @@
 // Minimap: lane & dinding (digambar sekali) + titik unit. Klik/seret untuk memindahkan kamera.
-import { MAP_SIZE } from '../../../shared/src';
+import { BUSHES, MAP_SIZE, PINGS, type GameEvent } from '../../../shared/src';
 import type { EntityViews } from '../render/EntityViews';
-import { paintMap } from '../render/MapView';
+import { paintMinimap } from '../render/terrain';
 import type { SceneManager } from '../render/SceneManager';
 
 const SIZE = 200;
@@ -12,6 +12,9 @@ export class Minimap {
   private ctx: CanvasRenderingContext2D;
   private bg = document.createElement('canvas');
   private acc = 0;
+  private clock = 0;
+  /** Penanda pesan cepat tim: posisi dunia, warna, dan waktu munculnya. */
+  private pings: { x: number; z: number; color: string; t0: number }[] = [];
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -21,7 +24,15 @@ export class Minimap {
   ) {
     this.ctx = canvas.getContext('2d')!;
     this.bg.width = this.bg.height = SIZE;
-    paintMap(this.bg.getContext('2d')!, SIZE, true);
+    const bg = this.bg.getContext('2d')!;
+    paintMinimap(bg, SIZE);
+    // semak persembunyian: bulatan hijau tua
+    bg.fillStyle = 'rgba(40, 120, 70, 0.9)';
+    for (const b of BUSHES) {
+      bg.beginPath();
+      bg.arc(b.x * S, b.z * S, Math.max(2.5, b.r * S), 0, Math.PI * 2);
+      bg.fill();
+    }
 
     const jump = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -40,8 +51,19 @@ export class Minimap {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  /** Pesan cepat tim ditandai di minimap selama beberapa detik. */
+  handle(events: GameEvent[]): void {
+    for (const e of events) {
+      if (e.k === 'alert') this.pings.push({ x: e.x, z: e.z, color: '#ff4a4a', t0: this.clock }); // bangunan kita diserang
+      if (e.k !== 'ping') continue;
+      const color = '#' + (PINGS[e.kind]?.color ?? 0xffffff).toString(16).padStart(6, '0');
+      this.pings.push({ x: e.x, z: e.z, color, t0: this.clock });
+    }
+  }
+
   update(dt: number): void {
     this.acc += dt;
+    this.clock += dt;
     if (this.acc < 0.1) return;
     this.acc = 0;
     const c = this.ctx;
@@ -63,7 +85,9 @@ export class Minimap {
           c.strokeRect(x - 5, y - 5, 10, 10);
           break;
         case 'minion':
-          c.fillRect(x - 1, y - 1, 2.5, 2.5);
+          // minion super digambar lebih besar supaya lane yang terbuka terlihat dari minimap
+          if (v.st.sub === 'super') c.fillRect(x - 2, y - 2, 4.5, 4.5);
+          else c.fillRect(x - 1, y - 1, 2.5, 2.5);
           break;
         case 'monster':
           c.beginPath();
@@ -79,6 +103,24 @@ export class Minimap {
           c.stroke();
           break;
       }
+    }
+
+    // pesan cepat: titik + cincin yang berdenyut selama 5 detik
+    this.pings = this.pings.filter((p) => this.clock - p.t0 < 5);
+    for (const p of this.pings) {
+      const age = this.clock - p.t0;
+      const pulse = (age * 1.4) % 1;
+      c.strokeStyle = p.color;
+      c.fillStyle = p.color;
+      c.globalAlpha = 1 - pulse;
+      c.lineWidth = 2.5;
+      c.beginPath();
+      c.arc(p.x * S, p.z * S, 4 + pulse * 16, 0, Math.PI * 2);
+      c.stroke();
+      c.globalAlpha = 1;
+      c.beginPath();
+      c.arc(p.x * S, p.z * S, 3.5, 0, Math.PI * 2);
+      c.fill();
     }
 
     // bingkai area pandang kamera (perkiraan)

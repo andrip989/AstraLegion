@@ -11,6 +11,10 @@ export interface Leg {
 
 export interface Arm {
   shoulder: THREE.Object3D;
+  /** Sendi siku (opsional): lengan bawah menekuk saat berjalan dan menyerang. */
+  elbow?: THREE.Object3D;
+  /** Tekukan siku saat diam (radian, positif = menekuk ke depan). */
+  bend?: number;
   phase: number;
   /** Rotasi X saat diam (negatif = terangkat ke depan). */
   rest: number;
@@ -31,6 +35,8 @@ export interface Rig {
   sway: THREE.Object3D[];
   /** Bagian yang berputar terus (kristal, cincin energi). */
   spin: THREE.Object3D[];
+  /** Bagian yang melayang naik-turun (kristal); posisi dasar di userData.baseY. */
+  bob: THREE.Object3D[];
   /** Radian fase langkah per unit jarak tempuh. */
   stride: number;
   legSwing: number;
@@ -58,6 +64,7 @@ export function newRig(partial: Partial<Rig> = {}): Rig {
     arms: [],
     sway: [],
     spin: [],
+    bob: [],
     stride: 2.2,
     legSwing: 0.75,
     kneeBend: 1.0,
@@ -106,6 +113,11 @@ export function animateRig(r: Rig, s: AnimState, time: number, dt: number): void
     }
     if (castK > 0) x += (-2.4 - x) * castK * 0.85; // kedua lengan terangkat saat casting
     arm.shoulder.rotation.x = x;
+    if (arm.elbow) {
+      let bend = (arm.bend ?? 0.25) + Math.max(0, Math.sin(s.phase + arm.phase)) * 0.55 * arm.swing * w;
+      if (s.atk > 0 && arm === r.strikeArm) bend += Math.sin(Math.min(1, atkT * 1.6) * Math.PI) * 0.9;
+      arm.elbow.rotation.x = -bend * (1 - castK * 0.7);
+    }
   }
 
   if (r.body) {
@@ -124,10 +136,17 @@ export function animateRig(r: Rig, s: AnimState, time: number, dt: number): void
 
   r.sway.forEach((o, i) => {
     const base = (o.userData.baseX as number | undefined) ?? 0;
-    o.rotation.x = base + Math.sin(time * 3.2 + s.seed + i * 1.3) * (0.12 + 0.1 * w) + 0.55 * w;
+    // lift: seberapa terangkat saat berlari (syal); wag: kibasan ke samping (ekor)
+    const lift = (o.userData.lift as number | undefined) ?? 0.55;
+    const wag = (o.userData.wag as number | undefined) ?? 0;
+    o.rotation.x = base + Math.sin(time * 3.2 + s.seed + i * 1.3) * (0.12 + 0.1 * w) * (wag ? 0.4 : 1) + lift * w;
     o.rotation.z = Math.sin(time * 2.1 + s.seed + i) * 0.1;
+    if (wag) o.rotation.y = Math.sin(time * (2.2 + 3 * w) + s.seed - i * 0.9) * wag;
   });
   r.spin.forEach((o, i) => {
     o.rotation.y += dt * (i % 2 === 0 ? 1.2 : -1.9);
+  });
+  r.bob.forEach((o, i) => {
+    o.position.y = ((o.userData.baseY as number | undefined) ?? 0) + Math.sin(time * 1.6 + s.seed + i * 2.1) * 0.12;
   });
 }

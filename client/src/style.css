@@ -1,13 +1,14 @@
 :root {
   --bg: #0b1020;
   --panel: rgba(12, 18, 36, 0.86);
+  --panel-hi: rgba(28, 38, 70, 0.9);
   --line: rgba(120, 160, 255, 0.28);
   --text: #e6ecff;
   --dim: #8fa0c8;
   --blue: #4f9bff;
   --red: #ff5c5c;
   --gold: #ffd23f;
-  --skill: 58px;
+  --skill: 60px;
 }
 * {
   box-sizing: border-box;
@@ -41,6 +42,11 @@ button {
   color: inherit;
   cursor: pointer;
 }
+.ico {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
 
 /* ---------- Lobby ---------- */
 #lobby {
@@ -52,63 +58,117 @@ button {
   justify-content: center;
   padding: 12px;
   overflow: auto;
-  background: radial-gradient(ellipse at 50% 20%, #1c2c5e 0%, #0b1020 62%);
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(255, 210, 63, 0.12), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 0% 100%, rgba(79, 155, 255, 0.22), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 100% 100%, rgba(255, 92, 92, 0.18), transparent 70%),
+    radial-gradient(ellipse at 50% 20%, #1c2c5e 0%, #0b1020 62%);
 }
 .lobby-box {
-  width: min(880px, 100%);
+  width: min(1180px, 100%);
   margin: auto;
   text-align: center;
 }
 .lobby-box h1 {
   margin: 0;
-  font-size: clamp(28px, 6vw, 54px);
+  font-size: clamp(28px, 6vw, 56px);
   letter-spacing: 0.14em;
   font-weight: 800;
+  background: linear-gradient(180deg, #ffffff 20%, #b9c8ff 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 18px rgba(79, 155, 255, 0.45));
 }
 .lobby-box h1 span {
-  color: var(--gold);
+  background: linear-gradient(180deg, #fff3b0 10%, var(--gold) 55%, #e89b1c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .tagline {
   margin: 4px 0 16px;
   color: var(--dim);
   font-size: 14px;
+  letter-spacing: 0.04em;
 }
 #hero-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
 }
 .hero-card {
-  padding: 12px 10px;
+  position: relative;
+  overflow: hidden;
+  padding: 0 12px 12px;
   text-align: left;
-  background: var(--panel);
+  background: linear-gradient(180deg, rgba(22, 30, 58, 0.92), rgba(10, 15, 30, 0.94));
   border: 2px solid var(--line);
-  border-radius: 12px;
-  transition: transform 0.12s, border-color 0.12s;
+  border-radius: 14px;
+  transition:
+    transform 0.14s,
+    border-color 0.14s,
+    box-shadow 0.14s;
 }
 .hero-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 .hero-card.selected {
   border-color: var(--hc);
-  box-shadow: 0 0 22px -6px var(--hc);
+  box-shadow:
+    0 0 28px -6px var(--hc),
+    inset 0 0 40px -22px var(--hc);
 }
-.hero-card .swatch {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--hc);
-  margin-bottom: 8px;
+/* potret 3D hero di atas kartu, dengan cahaya warna khas hero di belakangnya */
+.hero-card .portrait {
+  position: relative;
+  height: clamp(84px, 24vh, 196px);
+  margin: 0 -12px 8px;
+  /* deklarasi pertama = cadangan untuk browser lama tanpa color-mix() */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
+  background:
+    radial-gradient(ellipse 70% 62% at 50% 62%, color-mix(in srgb, var(--hc) 46%, transparent), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+  border-bottom: 1px solid var(--line);
+  border-bottom-color: color-mix(in srgb, var(--hc) 45%, transparent);
+}
+.hero-card .portrait img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 100%;
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transition:
+    opacity 0.3s,
+    transform 0.25s;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+}
+.hero-card .portrait img.ready {
+  opacity: 0.82;
+  transform: none;
+}
+.hero-card.selected .portrait img.ready {
+  opacity: 1;
+  transform: scale(1.07);
 }
 .hero-card h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 19px;
+}
+.hero-card .title {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--dim);
 }
 .hero-card .role {
   color: var(--hc);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 .hero-card p {
   margin: 6px 0;
@@ -121,11 +181,24 @@ button {
   padding: 0;
   list-style: none;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.75;
+}
+.hero-card li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hero-card li .ico {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  padding: 2px;
+  color: var(--hc);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
 }
 .hero-card li b {
-  display: inline-block;
-  width: 16px;
+  width: 11px;
   color: var(--hc);
 }
 .lobby-row {
@@ -153,9 +226,10 @@ button {
   font-weight: 800;
   letter-spacing: 0.1em;
   color: #111;
-  background: var(--gold);
+  background: linear-gradient(180deg, #ffe37a, var(--gold) 55%, #f0a91f);
   border: 0;
   border-radius: 8px;
+  box-shadow: 0 4px 18px -6px rgba(255, 210, 63, 0.7);
 }
 #play-btn:disabled {
   opacity: 0.45;
@@ -165,6 +239,27 @@ button {
   padding: 11px 14px;
   letter-spacing: 0;
   font-weight: 600;
+}
+#gfx-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+#gfx-row button {
+  padding: 4px 12px;
+  font-size: 12.5px;
+  background: #0e1630;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+#gfx-row button.on {
+  color: #111;
+  font-weight: 700;
+  background: var(--gold);
+  border-color: var(--gold);
 }
 #conn-status {
   margin-top: 10px;
@@ -203,10 +298,11 @@ button {
   display: flex;
   gap: 16px;
   align-items: center;
-  padding: 5px 16px;
-  background: var(--panel);
+  padding: 5px 18px;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--line);
   border-radius: 999px;
+  box-shadow: 0 6px 20px -8px #000;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -217,11 +313,15 @@ button {
   color: var(--red);
 }
 #topbar b {
-  font-size: 18px;
+  font-size: 19px;
+  text-shadow: 0 0 12px currentColor;
 }
 #clock {
+  padding: 0 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 #mode-badge {
   top: 8px;
@@ -261,6 +361,7 @@ button {
 #feed div {
   padding: 3px 9px;
   background: var(--panel);
+  border-left: 3px solid var(--gold);
   border-radius: 6px;
   animation: fadein 0.2s;
 }
@@ -275,14 +376,17 @@ button {
   bottom: 10px;
   width: 190px;
   height: 190px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 2px solid rgba(140, 170, 255, 0.45);
+  border-radius: 10px;
   background: #0a0f1f;
+  box-shadow:
+    0 8px 24px -8px #000,
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6);
   pointer-events: auto;
   touch-action: none;
 }
 #follow-btn {
-  right: 208px;
+  right: 210px;
   bottom: 10px;
   width: 36px;
   height: 36px;
@@ -304,17 +408,36 @@ button {
   align-items: flex-end;
   gap: 12px;
 }
+/* panel status: potret hero di kiri, bar & angka di kanan */
 #status {
-  width: 250px;
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  column-gap: 9px;
+  width: 300px;
   padding: 8px 10px;
-  background: var(--panel);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -10px #000;
+}
+#status > * {
+  grid-column: 2;
+}
+#hero-portrait {
+  grid-column: 1;
+  grid-row: 1 / span 5;
+  align-self: stretch;
+  background: #0f1730 no-repeat 50% 12% / 210% auto;
+  background:
+    no-repeat 50% 12% / 210% auto,
+    radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--sc, #4f9bff) 55%, transparent), rgba(10, 15, 31, 0.9) 75%);
+  border: 2px solid var(--sc, var(--line));
   border-radius: 10px;
 }
 .who {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
   font-size: 13px;
   font-weight: 700;
 }
@@ -328,15 +451,25 @@ button {
   overflow: hidden;
   background: #0a0f1f;
   border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 .bar > div {
   height: 100%;
   width: 100%;
   transform-origin: left;
+  transition: transform 0.12s linear;
+}
+.bar::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 55% 0;
+  background: linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
+  pointer-events: none;
 }
 .bar span {
   position: absolute;
   inset: 0;
+  z-index: 1;
   font-size: 11px;
   line-height: 16px;
   text-align: center;
@@ -344,16 +477,16 @@ button {
   font-variant-numeric: tabular-nums;
 }
 .bar.hp > div {
-  background: linear-gradient(#5fe07a, #2fa54b);
+  background: linear-gradient(#63e680, #2a9d48);
 }
 .bar.mp > div {
-  background: linear-gradient(#5aa9ff, #2c6fd6);
+  background: linear-gradient(#5aa9ff, #2a66cc);
 }
 .bar.xp {
   height: 5px;
 }
 .bar.xp > div {
-  background: var(--gold);
+  background: linear-gradient(90deg, #f0a91f, var(--gold));
 }
 .econ {
   display: flex;
@@ -382,51 +515,67 @@ button {
   width: var(--skill);
   height: var(--skill);
   overflow: hidden;
-  background: #101a38;
-  border: 2px solid var(--sc, var(--line));
-  border-radius: 10px;
+  color: var(--sc);
+  background: linear-gradient(180deg, #1a2548, #0d1430);
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--sc) 26%, transparent), transparent 70%),
+    linear-gradient(180deg, #1a2548, #0d1430);
+  border: 2px solid var(--sc);
+  border-color: color-mix(in srgb, var(--sc) 70%, #000);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px -8px #000;
   touch-action: none;
+}
+.skill.ult {
+  border-color: var(--gold);
+  box-shadow:
+    0 6px 16px -8px #000,
+    0 0 14px -4px var(--gold);
+}
+.skill .ico {
+  position: absolute;
+  inset: 0;
+  width: 58%;
+  height: 58%;
+  margin: auto;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--sc) 70%, transparent));
 }
 .skill .key {
   position: absolute;
   top: 2px;
-  left: 5px;
-  font-size: 13px;
+  left: 4px;
+  z-index: 2;
+  font-size: 12px;
   font-weight: 800;
-  color: var(--sc);
-}
-.skill .nm {
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 13px;
-  font-size: 9px;
-  line-height: 1.05;
-  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
 }
 .skill .mana {
   position: absolute;
   right: 4px;
   bottom: 1px;
+  z-index: 2;
   font-size: 10px;
-  color: #7db8ff;
+  color: #9fcaff;
+  text-shadow: 0 1px 2px #000;
 }
+/* cooldown: sapuan searah jarum jam */
 .skill .cd {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 0;
-  background: rgba(0, 0, 0, 0.72);
+  inset: -20%;
+  z-index: 1;
+  background: conic-gradient(rgba(4, 6, 14, 0.78) calc(var(--cd, 0) * 1%), transparent 0);
 }
 .skill .cdt {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   font-weight: 800;
+  color: #fff;
   text-shadow: 0 1px 3px #000;
 }
 #apk-link {
@@ -439,19 +588,40 @@ button {
   border: 1px solid var(--gold);
   border-radius: 8px;
 }
-.skill.oncd .nm {
-  visibility: hidden;
+#update-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 10px 18px;
+  font-weight: 700;
+  color: #0b1020;
+  background: #7be495;
+  border: 0;
+  border-radius: 8px;
+  animation: update-pulse 1.6s ease-in-out infinite;
 }
-@media (pointer: coarse) {
-  .skill.oncd .key {
-    opacity: 0.12;
+#update-btn:disabled {
+  animation: none;
+  opacity: 0.85;
+}
+@keyframes update-pulse {
+  50% {
+    box-shadow: 0 0 18px 2px rgba(123, 228, 149, 0.6);
   }
 }
+#app-version {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--dim);
+  opacity: 0.7;
+}
+.skill.oncd .ico {
+  opacity: 0.45;
+}
 .skill.nomana {
-  filter: saturate(0.3);
+  filter: saturate(0.25) brightness(0.8);
 }
 .skill.locked {
-  opacity: 0.4;
+  opacity: 0.45;
 }
 #tooltip {
   left: 50%;
@@ -461,9 +631,10 @@ button {
   padding: 9px 11px;
   font-size: 12.5px;
   line-height: 1.45;
-  background: var(--panel);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: 0 8px 24px -10px #000;
 }
 #tooltip b {
   color: var(--gold);
@@ -479,9 +650,10 @@ button {
   transform: translate(-50%, -50%);
   padding: 14px 28px;
   text-align: center;
-  background: var(--panel);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--line);
   border-radius: 12px;
+  box-shadow: 0 12px 40px -12px #000;
   font-size: 18px;
 }
 #respawn b {
@@ -491,14 +663,16 @@ button {
 #gameover h2,
 #disconnect h2 {
   margin: 0 0 6px;
-  font-size: 34px;
-  letter-spacing: 0.1em;
+  font-size: 38px;
+  letter-spacing: 0.12em;
 }
 #gameover.win h2 {
   color: var(--gold);
+  text-shadow: 0 0 26px rgba(255, 210, 63, 0.7);
 }
 #gameover.lose h2 {
   color: var(--red);
+  text-shadow: 0 0 26px rgba(255, 92, 92, 0.6);
 }
 #gameover p {
   margin: 0;
@@ -526,7 +700,8 @@ button {
     bottom: 8px;
   }
   #status {
-    width: min(210px, 34vw);
+    grid-template-columns: 44px 1fr;
+    width: min(250px, 38vw);
     padding: 6px 8px;
   }
   #skills {
@@ -535,16 +710,19 @@ button {
   .skill {
     border-radius: 50%;
   }
-  .skill .nm,
   .skill .mana {
     display: none;
   }
   .skill .key {
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
+    top: auto;
+    bottom: 3px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11px;
+  }
+  .skill.oncd .key {
+    opacity: 0.2;
   }
   #minimap {
     top: 6px;
@@ -556,7 +734,7 @@ button {
   }
   #follow-btn {
     top: 6px;
-    left: calc(max(8px, env(safe-area-inset-left)) + 118px);
+    left: calc(max(8px, env(safe-area-inset-left)) + 120px);
     right: auto;
     bottom: auto;
     width: 40px;
@@ -578,12 +756,20 @@ button {
     grid-template-columns: 1fr;
   }
   .hero-card ul,
-  .hero-card p {
+  .hero-card p,
+  .hero-card .title {
     display: none;
+  }
+  .hero-card .portrait {
+    height: 96px;
   }
 }
 @media (max-height: 430px) {
-  .hero-card ul {
+  .hero-card ul,
+  .hero-card .title {
+    display: none;
+  }
+  .hero-card p {
     display: none;
   }
   .tagline {

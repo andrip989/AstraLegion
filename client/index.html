@@ -5,22 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0b1020" />
     <title>Astra Legion</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1020'/%3E%3Cpath d='M18 3 7 18h7l-2 11 13-16h-8z' fill='%23ffd23f'/%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="./logo.svg" />
     <link rel="stylesheet" href="./src/style.css" />
+    <link rel="stylesheet" href="./src/ui.css" />
+    <link rel="stylesheet" href="./src/account.css" />
   </head>
   <body>
     <canvas id="game"></canvas>
 
-    <!-- LOBBY -->
-    <div id="lobby">
-      <div class="lobby-box">
+    <!-- MASUK / DAFTAR -->
+    <div id="auth" class="hidden">
+      <form class="auth-box" id="auth-form" autocomplete="on">
+        <img class="logo" src="./logo.svg" alt="" />
         <h1>ASTRA <span>LEGION</span></h1>
-        <p class="tagline">Arena 3 jalur &middot; 3 lawan 3 &middot; hancurkan Core musuh</p>
+        <p class="tagline">Masuk untuk menyimpan level akun, statistik, dan riwayat pertandinganmu</p>
+        <!-- jenis akun yang sedang dipakai: online (server game) atau hanya di perangkat ini -->
+        <div id="auth-kind" class="wait">Menghubungkan ke server…</div>
+        <div class="seg" id="auth-tabs">
+          <button type="button" data-tab="login">Masuk</button>
+          <button type="button" data-tab="register">Daftar</button>
+        </div>
+        <label>Nama pemain<input id="auth-name" maxlength="16" autocomplete="username" required /></label>
+        <label>Kata sandi<input id="auth-pass" type="password" maxlength="64" autocomplete="current-password" required /></label>
+        <label id="auth-pass2-row">Ulangi kata sandi<input id="auth-pass2" type="password" maxlength="64" autocomplete="new-password" /></label>
+        <div id="auth-error"></div>
+        <button id="auth-submit" type="submit">MASUK</button>
+        <button id="auth-guest" type="button">Main sebagai tamu</button>
+        <p class="hint" id="auth-hint"></p>
+      </form>
+    </div>
+
+    <!-- LOBBY -->
+    <div id="lobby" class="hidden">
+      <div id="account-bar">
+        <button id="profile-btn" title="Profil"><span class="lv" id="acc-level">1</span><span id="acc-name">Tamu</span></button>
+        <button id="rank-btn" title="Papan peringkat pemain">&#127942;<span>Peringkat</span></button>
+        <button id="settings-btn" title="Pengaturan">&#9881;<span>Pengaturan</span></button>
+      </div>
+      <div class="lobby-box">
+        <div class="lobby-head">
+          <img class="logo" src="./logo.svg" alt="" />
+          <h1>ASTRA <span>LEGION</span></h1>
+          <p class="tagline">Arena 3 jalur &middot; 3 lawan 3 &middot; hancurkan Core musuh</p>
+        </div>
+        <button id="daily-line" class="hidden" type="button" title="Lihat misi harian dan pencapaian"></button>
         <div id="hero-cards"></div>
         <div class="lobby-row">
           <input id="name-input" maxlength="16" placeholder="Nama pemain" autocomplete="off" />
           <button id="play-btn" disabled>MAIN</button>
         </div>
+        <div class="lobby-row lobby-opts">
+          <div class="seg" id="team-pick" title="Tim yang kamu inginkan">
+            <button type="button" data-team="">Tim otomatis</button>
+            <button type="button" data-team="0">Biru</button>
+            <button type="button" data-team="1">Merah</button>
+          </div>
+          <input id="room-input" maxlength="10" placeholder="Kode room (opsional)" autocomplete="off" autocapitalize="characters" />
+          <button id="invite-btn" type="button" title="Salin tautan undangan ke room ini">Undang teman</button>
+          <div class="seg" id="spell-pick" title="Mantra tempur: kemampuan tambahan di luar skill hero"></div>
+          <div class="seg" id="bot-pick" title="Tingkat kesulitan bot"></div>
+        </div>
+        <div id="room-hint"></div>
         <div id="conn-status">Menghubungkan ke server…</div>
         <details id="server-box">
           <summary>Alamat server multiplayer (opsional)</summary>
@@ -30,43 +75,119 @@
           </div>
         </details>
         <a id="apk-link" class="hidden" href="#">Unduh APK Android</a>
+        <button id="update-btn" class="hidden"></button>
+        <div id="app-version"></div>
       </div>
     </div>
 
+    <div id="loading" class="hidden"><img class="logo" src="./logo.svg" alt="" /><div class="spinner"></div><span>Menyiapkan arena…</span></div>
+
     <!-- HUD -->
     <div id="hud" class="hidden">
+      <div id="hurt"></div>
+      <div id="announce" class="hidden"><b id="announce-title"></b><span id="announce-sub"></span></div>
+      <button id="quickbuy" class="hidden" title="Beli item rekomendasi (G)">
+        <i id="qb-icon"></i>
+        <span class="qb-label">Rekomendasi</span>
+        <b id="qb-name"></b>
+        <span id="qb-desc"></span>
+        <span class="qb-cost" id="qb-cost"></span>
+        <span id="qb-state"></span>
+        <span class="qb-bar"><i id="qb-fill"></i></span>
+      </button>
+      <div id="tip" class="hidden"><span id="tip-text"></span><small id="tip-count"></small><button id="tip-close">&times;</button></div>
       <div id="topbar">
         <span class="team blue"><b id="score-blue">0</b> Biru</span>
         <span id="clock">00:00</span>
         <span class="team red">Merah <b id="score-red">0</b></span>
       </div>
-      <div id="mode-badge"></div>
+      <div id="top-right">
+        <span id="fps" class="hidden"></span>
+        <span id="mode-badge"></span>
+        <span id="net" class="hidden" title="Latensi ke server"></span>
+        <button id="ping-btn" title="Pesan cepat ke tim (V)">&#128227;</button>
+        <button id="chat-btn" title="Obrolan (Enter: tim · Shift+Enter: semua pemain)">&#128172;</button>
+        <button id="score-btn" title="Papan skor (tahan Tab)">&#9776;</button>
+        <button id="menu-btn" title="Pengaturan (Esc)">&#9881;</button>
+      </div>
       <div id="help">
-        Klik kanan / ketuk: gerak &amp; serang &middot; Q W E R: skill &middot; Scroll / cubit: zoom<br />
-        Mouse di tepi layar / seret: geser kamera &middot; Spasi: ke hero &middot; Y: kunci kamera &middot; S: berhenti
+        Klik kanan / ketuk: gerak &amp; serang &middot; Q W E R: skill &middot; G: beli rekomendasi &middot; B: pulang ke base &middot; P: toko &middot; Tab: papan skor<br />
+        Scroll / cubit: zoom &middot; mouse di tepi layar / seret: geser kamera &middot; Spasi: ke hero &middot; Y: kunci kamera &middot; S: berhenti<br />
+        Enter: obrolan tim &middot; Shift+Enter: obrolan semua pemain &middot; V: pesan cepat ke tim &middot; F: mantra tempur
       </div>
       <div id="feed"></div>
+      <div id="chat">
+        <div id="chat-log"></div>
+        <form id="chat-form" class="hidden">
+          <button type="button" id="chat-scope" title="Ganti tujuan: tim / semua pemain (Tab)">Tim</button>
+          <input id="chat-input" maxlength="120" autocomplete="off" enterkeyhint="send" placeholder="Pesan ke tim…" />
+          <button type="submit" id="chat-send" title="Kirim (Enter)">&#10148;</button>
+        </form>
+      </div>
+
+      <!-- kontrol layar sentuh: joystick gerak di kiri bawah, tombol serang di kanan bawah -->
+      <div id="joy-zone"><div id="joystick"><i id="joy-knob"></i></div></div>
+      <button id="attack-btn" title="Serang musuh terdekat">
+        <svg class="ico" viewBox="0 0 32 32"><path d="M28 4 18.500 6 8 17.500 14.500 24 26 13.500z" fill="currentColor" /><path d="M5.500 15.500 16.500 26.500M9.500 22.500 4 28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
+      </button>
 
       <canvas id="minimap" width="200" height="200"></canvas>
       <button id="follow-btn" title="Kunci kamera ke hero (Y)">◎</button>
 
       <div id="bottom">
         <div id="status">
+          <div id="hero-portrait"></div>
           <div class="who"><span id="hero-name"></span><span id="hero-level"></span></div>
           <div class="bar hp"><div id="hp-fill"></div><span id="hp-text"></span></div>
           <div class="bar mp"><div id="mp-fill"></div><span id="mp-text"></span></div>
           <div class="bar xp"><div id="xp-fill"></div></div>
           <div class="econ"><span id="gold">0</span><span id="kda">0 / 0 / 0</span><span id="wave"></span></div>
         </div>
-        <div id="skills"></div>
+        <div id="actions">
+          <div id="items"></div>
+          <div id="skills"></div>
+        </div>
+        <div id="side-btns">
+          <button id="shop-btn" title="Toko (P)"></button>
+          <button id="recall-btn" title="Pulang ke base (B)"></button>
+        </div>
       </div>
       <div id="tooltip" class="hidden"></div>
 
-      <div id="respawn" class="hidden">Bangkit kembali dalam <b id="respawn-time">0</b></div>
-      <div id="gameover" class="hidden"><h2 id="gameover-title"></h2><p>Pertandingan baru segera dimulai…</p></div>
+      <div id="shop" class="hidden">
+        <div class="shop-head"><b>Toko</b><span id="shop-gold"></span><button id="shop-close">&times;</button></div>
+        <p class="hint" id="shop-note"></p>
+        <div id="shop-list"></div>
+      </div>
+      <div id="scoreboard" class="hidden board"></div>
+      <div id="aim-cancel" class="hidden">&times; Batal</div>
+      <div id="ping-menu" class="hidden"></div>
+      <div id="channel" class="hidden"><span>Pulang ke base…</span><div><i id="channel-fill"></i></div></div>
+
+      <div id="respawn" class="hidden">
+        <div id="respawn-by"></div>
+        <div>Bangkit kembali dalam <b id="respawn-time">0</b></div>
+        <button id="spectate-btn" type="button" class="hidden"></button>
+      </div>
+      <div id="gameover" class="hidden">
+        <h2 id="gameover-title"></h2>
+        <div id="gameover-stats"></div>
+        <div id="gameover-board" class="board"></div>
+        <p>Pertandingan baru segera dimulai…</p>
+        <button id="gameover-lobby" type="button">Kembali ke lobby (ganti hero)</button>
+      </div>
+      <div id="reconnect" class="hidden"><div class="spinner"></div><span>Koneksi terputus. Menyambung ulang…</span></div>
       <div id="disconnect" class="hidden">
         <h2>Koneksi terputus</h2>
         <button onclick="location.reload()">Muat ulang</button>
+      </div>
+    </div>
+
+    <!-- JENDELA (pengaturan, profil) -->
+    <div id="modal" class="hidden">
+      <div class="modal-box">
+        <div class="modal-head"><b id="modal-title"></b><button id="modal-close">&times;</button></div>
+        <div id="modal-body"></div>
       </div>
     </div>
 

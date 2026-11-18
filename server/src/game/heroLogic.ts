@@ -1,5 +1,5 @@
 // Logika hero: regenerasi, perintah gerak/serang, dash, dan casting skill.
-import { FOUNTAINS, FOUNTAIN_RADIUS, PASSIVE_GOLD_PER_SEC, ULT_UNLOCK_LEVEL } from '../../../shared/src';
+import { BUSH_REVEAL_TIME, FOUNTAINS, FOUNTAIN_RADIUS, PASSIVE_GOLD_PER_SEC, SPELLS, ULT_UNLOCK_LEVEL } from '../../../shared/src';
 import type { Game } from './Game';
 import type { Hero } from './entities';
 import { SKILL_HANDLERS } from './skills';
@@ -45,6 +45,7 @@ function followPath(game: Game, h: Hero, dt: number): boolean {
 
 export function updateHero(game: Game, h: Hero, dt: number): void {
   const now = game.time;
+  h.spellCd = Math.max(0, h.spellCd - dt); // cooldown mantra tetap berjalan selagi tumbang
   if (!h.alive) {
     if (now >= h.respawnAt) game.respawnHero(h);
     return;
@@ -60,6 +61,7 @@ export function updateHero(game: Game, h: Hero, dt: number): void {
   h.hp = Math.min(h.maxHp, h.hp + hpRegen * dt);
   h.mana = Math.min(h.maxMana, h.mana + manaRegen * dt);
   h.gold += PASSIVE_GOLD_PER_SEC * dt;
+  h.goldEarned += PASSIVE_GOLD_PER_SEC * dt;
   for (let i = 0; i < 4; i++) h.cds[i] = Math.max(0, h.cds[i] - dt);
   h.attackCd = Math.max(0, h.attackCd - dt);
   if (h.shield > 0 && now >= h.shieldUntil) h.shield = 0;
@@ -81,7 +83,15 @@ export function updateHero(game: Game, h: Hero, dt: number): void {
     }
     return;
   }
-  if (game.isStunned(h)) return;
+  if (game.isStunned(h)) {
+    h.recallAt = 0;
+    return;
+  }
+  // sedang recall: diam di tempat sampai selesai (bergerak/menyerang/terkena damage membatalkan)
+  if (h.recallAt > 0) {
+    if (now >= h.recallAt) game.finishRecall(h);
+    return;
+  }
 
   const o = h.order;
   if (o?.type === 'attack') {
@@ -150,9 +160,63 @@ export function castSkill(game: Game, h: Hero, slot: number, x: number, z: numbe
   if (ok === false) return false;
 
   h.mana -= def.mana;
-  h.cds[slot] = def.cooldown;
+  h.cds[slot] = def.cooldown * (1 - h.cdr);
+  h.recallAt = 0;
   game.emit({ k: 'cast', a: h.id, s: slot }); // untuk animasi casting di client
   if (def.target !== 'self') h.rot = Math.atan2(dirX, dirZ);
-  if (!def.keepsStealth) h.invisUntil = 0;
+  if (!def.keepsStealth) {
+    h.invisUntil = 0;
+    h.revealUntil = game.time + BUSH_REVEAL_TIME; // memakai skill membongkar persembunyian di semak
+  }
+  return true;
+}
+
+/**
+ * Mantra tempur (lihat shared/src/spells.ts): tanpa mana, cooldown panjang. (x, z) = titik bidik;
+ * hanya arahnya yang dipakai.
+ */
+export function castSpell(game: Game, h: Hero, x: number, z: number): boolean {
+  const def = SPELLS[h.spell];
+  if (!def || !h.alive || h.dash || h.spellCd > 0 || game.isStunned(h)) return false;
+  switch (def.id) {
+    case 'flash': {
+      let dx = x - h.x;
+      let dz = z - h.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 1e-3) {
+        dx = Math.sin(h.rot);
+        dz = Math.cos(h.rot);
+      } else {
+        dx /= d;
+        dz /= d;
+      }
+      const reach = Math.min(def.range ?? 6, d < 1e-3 ? Infinity : Math.max(d, 1.5));
+      const dest = game.nav.clampLine(h.x, h.z, h.x + dx * reach, h.z + dz * reach);
+      if (Math.hypot(dest.x - h.x, dest.z - h.z) < 0.6) return false; // terhalang tebing: jangan buang cooldown
+      game.emit({ k: 'trail', x0: h.x, z0: h.z, x1: dest.x, z1: dest.z, c: def.color });
+      h.x = dest.x;
+      h.z = dest.z;
+      h.rot = Math.atan2(dx, dz);
+      h.path = [];
+      if (h.order?.type === 'move') h.order = null;
+      game.emit({ k: 'ring', x: h.x, z: h.z, r: 2, c: def.color });
+      break;
+    }
+    case 'heal':
+      game.heal(h, h.maxHp * 0.18);
+      for (const ally of game.alliesNear(h.team, h.x, h.z, 7)) if (ally !== h) game.heal(ally, ally.maxHp * 0.1);
+      game.emit({ k: 'ring', x: h.x, z: h.z, r: 7, c: def.color });
+      break;
+    case 'sprint':
+      h.haste = 1.45;
+      h.hasteUntil = game.time + 5;
+      h.slowUntil = 0;
+      game.emit({ k: 'ring', x: h.x, z: h.z, r: 2.5, c: def.color });
+      break;
+    default:
+      return false;
+  }
+  h.spellCd = def.cooldown;
+  h.recallAt = 0;
   return true;
 }

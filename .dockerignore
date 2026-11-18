@@ -8,3 +8,4 @@ scripts
 *.apk
 *.log
 build.local.json
+astra-legion-data

@@ -1,9 +1,9 @@
 // AI bot sederhana untuk mengisi slot hero kosong: ikut wave di lane-nya,
 // menyerang yang terdekat, memakai skill ke hero musuh, dan mundur saat sekarat.
-import { CORES, FOUNTAINS, ULT_UNLOCK_LEVEL } from '../../../shared/src';
+import { BOT_LEVELS, CORES, FOUNTAINS, ULT_UNLOCK_LEVEL, nextRecommended } from '../../../shared/src';
 import type { Game } from './Game';
 import { Hero, Minion, Tower, type Unit } from './entities';
-import { castSkill, orderAttack, orderMove } from './heroLogic';
+import { castSkill, castSpell, orderAttack, orderMove } from './heroLogic';
 
 export class Bot {
   private thinkAt = 0;
@@ -14,20 +14,31 @@ export class Bot {
     public lane: number,
   ) {}
 
+  /** Beli item rekomendasi berikutnya begitu emasnya cukup. */
+  private shop(game: Game): void {
+    const next = nextRecommended(this.hero.def.id, this.hero.items);
+    if (next) game.buyItem(this.hero, next.id);
+  }
+
   update(game: Game): void {
     const h = this.hero;
+    this.shop(game);
     if (!h.alive) {
       this.retreating = false;
       return;
     }
     if (game.time < this.thinkAt) return;
-    this.thinkAt = game.time + 0.3 + Math.random() * 0.1;
+    // tingkat kesulitan: seberapa cepat bot bereaksi, kapan ia mundur, dan seberapa rajin memakai skill
+    const level = BOT_LEVELS[game.botLevel];
+    this.thinkAt = game.time + level.think + Math.random() * 0.1;
 
     const hpPct = h.hp / h.maxHp;
     const home = FOUNTAINS[h.team];
     if (this.retreating && hpPct > 0.85) this.retreating = false;
-    if (!this.retreating && hpPct < 0.3) this.retreating = true;
+    if (!this.retreating && hpPct < level.retreat) this.retreating = true;
     if (this.retreating) {
+      // mantra tempur dipakai untuk menyelamatkan diri: ketiganya (pindah, pulih, pacu) membantu kabur
+      if (hpPct < 0.3) castSpell(game, h, home.x, home.z);
       this.castByAi(game, 'escape', home.x, home.z);
       orderMove(game, h, home.x, home.z);
       return;
@@ -103,6 +114,7 @@ export class Bot {
 
   private castByAi(game: Game, ai: string, x: number, z: number): boolean {
     const h = this.hero;
+    if (Math.random() > BOT_LEVELS[game.botLevel].skill) return false; // bot mudah sering melewatkan kesempatan
     for (let slot = 0; slot < 4; slot++) {
       if (h.def.skills[slot].ai === ai && this.ready(slot)) return castSkill(game, h, slot, x, z);
     }

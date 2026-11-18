@@ -19,6 +19,17 @@ export const FIRST_WAVE_DELAY = 5;
 export const MONSTER_RESPAWN = 60;
 
 export const TOWER_RANGE = 12;
+
+/** Siklus siang-malam mengikuti waktu pertandingan: satu putaran penuh dalam detik. */
+export const DAY_CYCLE = 480;
+export type DayPhase = 'siang' | 'senja' | 'malam' | 'fajar';
+/** Fase hari pada waktu pertandingan `t` (detik). */
+export function dayPhase(t: number): DayPhase {
+  const p = ((t % DAY_CYCLE) + DAY_CYCLE) % DAY_CYCLE;
+  return p < 225 ? 'siang' : p < 285 ? 'senja' : p < 435 ? 'malam' : 'fajar';
+}
+/** Saat malam, monster hutan memberi emas lebih banyak (pengali). */
+export const NIGHT_JUNGLE_GOLD = 1.3;
 export const FOUNTAIN_RADIUS = 9;
 export const XP_SHARE_RANGE = 16;
 export const PASSIVE_GOLD_PER_SEC = 2;

@@ -1,5 +1,7 @@
 // Input pemain. Desktop: klik kanan gerak/serang, Q/W/E/R skill ke arah kursor.
-// Layar sentuh: ketuk = gerak/serang, seret = geser kamera, cubit = zoom, tombol skill = auto-bidik.
+// Layar sentuh: joystick = gerak, tombol serang = serang musuh terdekat, tombol skill = auto-bidik;
+// ketuk tanah/musuh, seret (geser kamera), dan cubit (zoom) tetap berlaku. Elemen joystick dan
+// tombol serangnya sendiri diurus TouchPad.ts, yang memanggil setStick() dan setAttack() di sini.
 import { HEROES, type ClientCommand, type Vec2 } from '../../../shared/src';
 import type { Effects } from '../render/Effects';
 import type { EntityViews } from '../render/EntityViews';
@@ -18,6 +20,15 @@ interface Ptr {
 
 const KEY_SLOT: Record<string, number> = { q: 0, w: 1, e: 2, r: 3 };
 
+/** Joystick: jeda antar perintah gerak (ms), dan sejauh apa titik tujuan di depan hero (unit). */
+const STICK_INTERVAL = 110;
+const STICK_REACH = 3.2;
+/** Joystick baru dianggap digerakkan di atas simpangan ini (0..1). */
+const STICK_DEADZONE = 0.22;
+/** Tombol serang: jarak pencarian musuh dari hero (unit), dan jeda pemilihan ulang target (ms). */
+const ATTACK_RANGE = 10;
+const ATTACK_RETARGET = 350;
+
 export class Controls {
   /** Kamera mengikuti hero. Default aktif di layar sentuh. */
   follow = IS_TOUCH;
@@ -31,6 +42,13 @@ export class Controls {
   private lastCmd = 0;
   private pinch = 0;
   private multiTouch = false;
+  /** Arah joystick di layar (-1..1; y positif = ke bawah), null saat dilepas. */
+  private stick: { x: number; y: number } | null = null;
+  private stickMoving = false;
+  private lastStick = 0;
+  private attackHeld = false;
+  private attackTarget = 0;
+  private lastAttack = 0;
 
   constructor(
     private sm: SceneManager,
@@ -64,8 +82,18 @@ export class Controls {
       this.rmbHeld = false;
     });
     addEventListener('keydown', (e) => this.keydown(e));
-    addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      this.keys.delete(k);
+      if (k === 'tab') this.onUi?.('board', false);
+    });
   }
+
+  /**
+   * Tombol antarmuka: toko (P), beli rekomendasi (G), papan skor (Tab, ditahan), menu (Esc),
+   * obrolan tim (Enter), obrolan semua pemain (Shift+Enter), dan pesan cepat (V).
+   */
+  onUi: ((what: 'shop' | 'quickbuy' | 'board' | 'menu' | 'chat' | 'chatall' | 'ping', down: boolean) => void) | null = null;
 
   setFollow(on: boolean): void {
     if (this.follow === on) return;
@@ -76,6 +104,113 @@ export class Controls {
   centerOnSelf(): void {
     const me = this.views.self;
     if (me) this.sm.target.set(me.root.position.x, 0, me.root.position.z);
+  }
+
+  // ------------------------------------------------------------ bidik skill
+
+  /** Skill yang sedang dibidik dengan menyeret tombolnya, dan arah seretnya di layar. */
+  private aiming: { slot: number; v: { x: number; y: number }; cancel: boolean } | null = null;
+
+  /**
+   * Tombol skill sedang diseret: `v` = arah seret di layar (panjang 0..1), `cancel` = jari di
+   * atas tombol batal. null = selesai/batal (penanda bidikan disembunyikan).
+   */
+  aimSkill(slot: number, v: { x: number; y: number } | null, cancel = false): void {
+    this.aiming = v ? { slot, v, cancel } : null;
+    if (!v) this.fx.aim(null);
+    else this.showAim();
+  }
+
+  /** Lempar skill ke arah bidikan (dipanggil saat tombol skill yang diseret dilepas). */
+  castAimed(slot: number, v: { x: number; y: number }): void {
+    const target = this.aimPoint(slot, v);
+    this.aimSkill(slot, null);
+    if (target) this.send({ t: 'cast', slot, x: target.x, z: target.z });
+  }
+
+  /** Titik target untuk arah seret: skill arah selalu sejauh jangkauannya, skill titik mengikuti panjang seretan. */
+  private aimPoint(slot: number, v: { x: number; y: number }): (Vec2 & { range: number; radius: number; width: number }) | null {
+    const me = this.views.self;
+    const def = HEROES[this.heroDef]?.skills[slot];
+    if (!me || !def) return null;
+    // sama seperti joystick: kanan layar = +x dunia, bawah layar = +z dunia
+    const wx = v.x;
+    const wz = v.y / 0.82;
+    const len = Math.hypot(wx, wz) || 1;
+    const pull = Math.min(1, Math.hypot(v.x, v.y));
+    const dist = def.target === 'dir' ? def.range : Math.max(1.2, pull * def.range);
+    return {
+      x: me.x + (wx / len) * dist,
+      z: me.z + (wz / len) * dist,
+      range: def.range,
+      radius: def.radius ?? 1,
+      width: def.target === 'dir' ? (def.width ?? 1.2) : 0,
+    };
+  }
+
+  private showAim(): void {
+    const a = this.aiming;
+    const me = this.views.self;
+    const p = a && this.aimPoint(a.slot, a.v);
+    if (!a || !me || !p) return;
+    this.fx.aim({ x: me.x, z: me.z, tx: p.x, tz: p.z, range: p.range, radius: p.radius, width: p.width, cancel: a.cancel });
+  }
+
+  // ------------------------------------------------- joystick & tombol serang
+
+  /** Joystick layar sentuh: arah di layar (panjang 0..1), atau null saat dilepas. */
+  setStick(dir: { x: number; y: number } | null): void {
+    this.stick = dir;
+    if (!dir && this.stickMoving) {
+      this.stickMoving = false;
+      this.send({ t: 'stop' });
+    }
+  }
+
+  /** Tombol serang layar sentuh ditekan / dilepas. Selama ditahan, target dipilih ulang otomatis. */
+  setAttack(held: boolean): void {
+    this.attackHeld = held;
+    if (held) {
+      this.attackTarget = 0;
+      this.attackNearest();
+    }
+  }
+
+  /** Serang musuh terdekat (hero diutamakan, bangunan paling akhir). false bila tidak ada target. */
+  private attackNearest(): boolean {
+    const me = this.views.self;
+    if (!me) return false;
+    this.lastAttack = performance.now();
+    // target lama masih hidup dan masih dekat: biarkan, supaya hero tidak berpindah-pindah sasaran
+    const current = this.views.get(this.attackTarget);
+    if (current && Math.hypot(current.x - me.x, current.z - me.z) < ATTACK_RANGE + 4) return true;
+    const foe = this.views.nearestEnemyTo(me.x, me.z, ATTACK_RANGE, true);
+    this.attackTarget = foe?.st.id ?? 0;
+    if (!foe) return false;
+    this.send({ t: 'attack', id: foe.st.id });
+    this.fx.clickMarker(foe.root.position.x, foe.root.position.z, 0xff5050);
+    return true;
+  }
+
+  private updateTouchPad(now: number): void {
+    const s = this.stick;
+    const me = this.views.self;
+    if (s && me && Math.hypot(s.x, s.y) > STICK_DEADZONE) {
+      // Kamera tidak berputar: kanan layar = +x dunia, bawah layar = +z dunia (lihat pan()).
+      if (now - this.lastStick > STICK_INTERVAL) {
+        this.lastStick = now;
+        this.stickMoving = true;
+        const len = Math.hypot(s.x, s.y / 0.82);
+        this.send({ t: 'move', x: me.x + (s.x / len) * STICK_REACH, z: me.z + (s.y / 0.82 / len) * STICK_REACH });
+      }
+      this.attackTarget = 0; // bergerak membatalkan serangan; tombol serang yang ditahan memilih lagi nanti
+      this.setFollow(true);
+    } else if (this.stickMoving && s) {
+      // joystick kembali ke tengah tanpa dilepas
+      this.stickMoving = false;
+      this.send({ t: 'stop' });
+    }
+    if (this.attackHeld && !this.stickMoving && now - this.lastAttack > ATTACK_RETARGET) this.attackNearest();
   }
 
   // ---------------------------------------------------------------- pointer
@@ -136,8 +271,10 @@ export class Controls {
       if (p.button === 2) this.rmbHeld = false;
       return;
     }
-    // ketukan singkat tanpa geser = perintah gerak/serang
-    if (!p.moved && !this.multiTouch && performance.now() - p.t0 < 450) this.command(p.x, p.y, true);
+    // Ketukan singkat tanpa geser pada musuh = serang musuh itu. Ketukan di tanah tidak
+    // menggerakkan hero: di layar sentuh gerak hanya lewat joystick, supaya jari yang meleset
+    // dari tombol tidak membuat hero berjalan sendiri.
+    if (!p.moved && !this.multiTouch && performance.now() - p.t0 < 450) this.command(p.x, p.y, true, true);
     if (this.ptrs.size === 0) this.multiTouch = false;
     this.pinch = 0;
   }
@@ -155,15 +292,17 @@ export class Controls {
     this.setFollow(false);
   }
 
-  private command(cx: number, cy: number, marker: boolean): void {
+  /** Perintah di titik layar: serang musuh di situ, atau (kecuali `attackOnly`) bergerak ke sana. */
+  private command(cx: number, cy: number, marker: boolean, attackOnly = false): void {
     const g = this.sm.groundPoint(cx, cy);
     if (!g) return;
     this.lastCmd = performance.now();
     const enemy = this.views.pickEnemy(g.x, g.z, IS_TOUCH ? 2 : 1.2);
     if (enemy) {
       this.send({ t: 'attack', id: enemy.st.id });
+      this.attackTarget = enemy.st.id; // tombol serang yang ditahan meneruskan target pilihan ini
       if (marker) this.fx.clickMarker(enemy.root.position.x, enemy.root.position.z, 0xff5050);
-    } else {
+    } else if (!attackOnly) {
       this.send({ t: 'move', x: g.x, z: g.z });
       if (marker) this.fx.clickMarker(g.x, g.z, 0x6dff8a);
     }
@@ -174,12 +313,24 @@ export class Controls {
   private keydown(e: KeyboardEvent): void {
     if (e.target instanceof HTMLInputElement) return;
     const k = e.key.toLowerCase();
-    if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
+    if (k === ' ' || k === 'tab' || k.startsWith('arrow')) e.preventDefault();
     if (e.repeat) return;
     this.keys.add(k);
     if (k in KEY_SLOT) this.castSlot(KEY_SLOT[k], false);
     else if (k === 's') this.send({ t: 'stop' });
     else if (k === 'y') this.setFollow(!this.follow);
+    else if (k === 'b') this.send({ t: 'recall' });
+    else if (k === 'p') this.onUi?.('shop', true);
+    else if (k === 'g') this.onUi?.('quickbuy', true);
+    else if (k === 'v') this.onUi?.('ping', true);
+    else if (k === 'f') this.castSpell(false);
+    else if (k === 'tab') this.onUi?.('board', true);
+    else if (k === 'escape') this.onUi?.('menu', true);
+    else if (k === 'enter') {
+      e.preventDefault(); // jangan sampai Enter yang sama langsung mengirim form obrolan
+      this.keys.delete(k);
+      this.onUi?.(e.shiftKey ? 'chatall' : 'chat', true);
+    }
   }
 
   /**
@@ -202,12 +353,34 @@ export class Controls {
     this.send({ t: 'cast', slot, x: aim.x, z: aim.z });
   }
 
+  /**
+   * Mantra tempur. Dibidik ke kursor (keyboard), atau ke arah joystick / arah hadap hero
+   * (tombol layar, `auto`). Hanya arahnya yang penting; jaraknya ditentukan server.
+   */
+  castSpell(auto: boolean): void {
+    const me = this.views.self;
+    if (!me) return;
+    let aim: Vec2 | null = null;
+    if (!auto && this.mouse.inside) aim = this.sm.groundPoint(this.mouse.x, this.mouse.y);
+    if (!aim) {
+      const s = this.stick;
+      const moving = s && Math.hypot(s.x, s.y) > STICK_DEADZONE;
+      const dx = moving ? s.x : Math.sin(me.rot);
+      const dz = moving ? s.y / 0.82 : Math.cos(me.rot);
+      const len = Math.hypot(dx, dz) || 1;
+      aim = { x: me.x + (dx / len) * 8, z: me.z + (dz / len) * 8 };
+    }
+    this.send({ t: 'spell', x: aim.x, z: aim.z });
+  }
+
   // ------------------------------------------------------------------ frame
 
   update(dt: number): void {
     const now = performance.now();
     // tahan klik kanan = terus bergerak mengikuti kursor
     if (this.rmbHeld && now - this.lastCmd > 140) this.command(this.mouse.x, this.mouse.y, false);
+    this.updateTouchPad(now);
+    if (this.aiming) this.showAim(); // penanda bidikan mengikuti hero yang sedang bergerak
 
     const speed = this.sm.zoom * 1.1 * dt;
     let px = 0;
