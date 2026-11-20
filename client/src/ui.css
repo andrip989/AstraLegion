@@ -2017,3 +2017,401 @@ img.logo {
   background: linear-gradient(180deg, #ffe58a, #ffb52e);
   border: 0;
 }
+
+/* ---------- Titan Astra: penghitung di bar atas dan chip buff ---------- */
+#titan-chip {
+  padding-left: 12px;
+  margin-left: -4px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffb347;
+  border-left: 1px solid var(--line);
+}
+#titan-chip:empty {
+  display: none;
+}
+#titan-chip.soon {
+  animation: titan-soon 0.7s ease-in-out infinite alternate;
+}
+#titan-chip.alive {
+  color: #ff7a3c;
+  text-shadow: 0 0 10px rgba(255, 122, 60, 0.9);
+}
+@keyframes titan-soon {
+  to {
+    color: #fff;
+    text-shadow: 0 0 10px #ffb347;
+  }
+}
+#buffs {
+  position: absolute;
+  bottom: 122px;
+  left: 50%;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+#buffs span {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #ffe9b8;
+  background: rgba(8, 12, 28, 0.78);
+  border: 1px solid #ffc24a;
+  border-radius: 999px;
+}
+#buffs span.titan {
+  color: #ffd9c2;
+  border-color: #ff7a3c;
+  box-shadow: 0 0 10px rgba(255, 122, 60, 0.45);
+}
+#buffs b {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+@media (pointer: coarse) {
+  #topbar {
+    gap: 10px;
+  }
+  #titan-chip {
+    padding-left: 8px;
+    font-size: 12px;
+  }
+  #buffs {
+    bottom: 84px;
+  }
+  #buffs span {
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+}
+#buffs span.flow {
+  color: #d3f3ff;
+  border-color: #5fd4ff;
+}
+
+/* ---------- menyerah (tombol di menu pesan cepat, panel suara) dan pemberitahuan bot pengganti ---------- */
+#ping-menu .surrender {
+  margin-top: 4px;
+  color: #ffc9c9;
+  border-color: rgba(255, 120, 120, 0.5);
+}
+#vote {
+  position: absolute;
+  top: 132px;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px 7px 14px;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: auto;
+  background: rgba(8, 12, 28, 0.9);
+  border: 1px solid #ff8a8a;
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+#vote button {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+#vote #vote-yes {
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+}
+#afk-note {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  max-width: 80vw;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  pointer-events: none;
+  background: rgba(8, 12, 28, 0.86);
+  border: 1px solid #ffc24a;
+  border-radius: 12px;
+  transform: translateX(-50%);
+}
+@media (pointer: coarse) {
+  #vote {
+    top: 50px;
+    font-size: 12px;
+  }
+  #afk-note {
+    top: 30%;
+    font-size: 12px;
+  }
+}
+
+/* ---------- item aktif: bisa diklik, bernomor, dan menampilkan sisa jedanya ---------- */
+.item {
+  position: relative;
+}
+.item.usable {
+  cursor: pointer;
+  border-color: #7dffb0;
+  box-shadow: 0 0 8px rgba(125, 255, 176, 0.45);
+}
+.item .key {
+  position: absolute;
+  right: 1px;
+  bottom: -1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: #d8ffe9;
+  text-shadow: 0 0 3px #000;
+}
+.item .cd {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(6, 9, 20, 0.74);
+  border-radius: 7px;
+}
+.item.waiting {
+  border-color: var(--line);
+  box-shadow: none;
+}
+.item.waiting .cd {
+  display: flex;
+}
+@media (pointer: coarse) {
+  .item .key {
+    display: none;
+  }
+}
+
+/* ---------- tombol Suar (kabut perang) ---------- */
+#ward-btn {
+  color: #bfe6ff;
+}
+#ward-btn .cd {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(6, 9, 20, 0.74);
+  border-radius: 9px;
+}
+#ward-btn.waiting .cd {
+  display: flex;
+}
+@media (pointer: coarse) {
+  /* di HP tombol Suar pindah ke kiri busur skill (lingkar luar, sekitar 15 derajat), supaya baris toko + item tetap satu baris */
+  #side-btns #ward-btn {
+    position: fixed;
+    right: calc(var(--pad-r) + var(--atk) / 2 + (var(--arc) + 52px) * 0.966 - 20px);
+    bottom: calc(var(--pad-b) + var(--atk) / 2 + (var(--arc) + 52px) * 0.259 - 20px);
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border-radius: 50%;
+  }
+  #ward-btn .cd {
+    border-radius: 50%;
+  }
+  #ward-btn > span {
+    display: none;
+  }
+}
+
+/* ---------- mode Kilat: jam hitung mundur memerah menjelang habis ---------- */
+#clock.ending {
+  color: #ff7a7a;
+  animation: titan-soon 0.6s ease-in-out infinite alternate;
+}
+
+/* ---------- lobby: kisi kartu untuk enam hero (ditambahkan bersama Gale Archer) ---------- */
+/* Kisi otomatis di style.css memecah enam kartu menjadi 5 + 1 atau 4 + 2. Di sini jumlah kolomnya
+   ditetapkan: enam sebaris di layar lebar (kotak lobby ikut dilebarkan), selain itu 3 x 2.
+   Layar sempit (sampai 640px) tetap satu kolom seperti aturan di style.css, kecuali HP mendatar.
+   Bila jumlah hero berubah lagi, angka kolom di blok ini yang perlu disesuaikan. */
+@media (min-width: 641px) {
+  #hero-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1180px) {
+  .lobby-box {
+    width: min(1320px, 100%);
+  }
+  #hero-cards {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  /* kartu jadi sedikit lebih sempit (teksnya lebih banyak baris): potret dipendekkan sebagai gantinya */
+  .hero-card .portrait {
+    height: clamp(84px, 21vh, 196px);
+  }
+}
+/* 3 x 2 di layar desktop sedang: kartunya lebar, jadi daftar skill dibuat dua kolom supaya lebih pendek */
+@media (min-width: 1000px) and (max-width: 1179px) and (min-height: 431px) {
+  .hero-card ul {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 8px;
+  }
+  .hero-card .portrait {
+    height: clamp(84px, 18vh, 160px);
+  }
+}
+/* HP kecil mendatar (lebar 560-640px): tetap 3 x 2, bukan enam kartu bertumpuk satu kolom */
+@media (min-width: 560px) and (max-width: 640px) and (max-height: 430px) {
+  #hero-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .hero-card {
+    padding: 0 8px 8px;
+  }
+  .hero-card .portrait {
+    margin: 0 -8px 6px;
+  }
+  .hero-card h3 {
+    font-size: 16px;
+  }
+}
+/* Isi kartu rata atas dan chip skin rata bawah: bawaan <button> menengahkan isinya, sehingga potret
+   kartu yang deskripsinya lebih pendek turun beberapa piksel dibanding kartu di sebelahnya. */
+@media (min-width: 560px) {
+  .hero-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .hero-card .skins {
+    margin-top: auto;
+    padding-top: 8px;
+  }
+}
+@media (min-width: 560px) and (max-height: 430px) {
+  .hero-card .skins {
+    padding-top: 4px;
+  }
+}
+
+/* ---------- mode latihan bebas: tombol dan panel alat bantu ---------- */
+#training {
+  position: absolute;
+  top: 190px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  pointer-events: auto;
+}
+#training button {
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(8, 12, 28, 0.86);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#training #train-toggle {
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+}
+#train-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  width: 236px;
+  padding: 8px;
+  background: rgba(8, 12, 28, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#train-panel.hidden {
+  display: none;
+}
+@media (pointer: coarse) {
+  #training {
+    top: 186px;
+    left: max(8px, env(safe-area-inset-left));
+  }
+  #training button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  #train-panel {
+    position: fixed;
+    top: 46px;
+    left: 50%;
+    width: 300px;
+    grid-template-columns: 1fr 1fr 1fr;
+    transform: translateX(-50%);
+  }
+}
+
+/* ---------- lobby: pemilih mode, talenta, dan tombol latihan bebas ---------- */
+#talent-pick button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+#talent-pick button i {
+  width: 9px;
+  height: 9px;
+  background: var(--sc, #fff);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--sc, #fff);
+}
+#train-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  background: rgba(8, 12, 28, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+@media (max-height: 430px) {
+  #talent-pick button span {
+    font-size: 11px;
+  }
+}
+
+/* ---------- papan skor: tombol Bisukan ---------- */
+.board .mute {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted, #9aa3c0);
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.board .mute.on {
+  color: #ffb4b4;
+  border-color: #ff8a8a;
+}

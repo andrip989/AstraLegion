@@ -10,6 +10,8 @@
            - values\ic_launcher_background.xml                 warna lapisan belakangnya
            - drawable*\splash.png                              layar pembuka, ukuran mengikuti
                                                                splash bawaan di folder android\
+           client\public\icon-144.png, icon-maskable-192.png, apple-touch-icon.png
+                                                               ikon untuk "pasang dari browser"
   Logo untuk web (client\public\logo.svg) dibuat terpisah dari moba_logo.svg.
   Jalankan lagi setelah mengganti logo, lalu build APK seperti biasa (build.cmd -Apk).
 #>
@@ -81,5 +83,12 @@ if (Test-Path $template) {
 } else {
   Write-Warning 'Folder android\ belum ada (dibuat saat build APK pertama); splash dilewati. Jalankan skrip ini lagi setelahnya.'
 }
+# ---- ikon web (pasang dari browser / PWA). Ukurannya dijaga kecil: unggahan ke hosting lewat
+# WebDAV macet untuk file di atas ~55 KB.
+$pub = Join-Path $root 'client\public'
+Save-Canvas 144 144 144 (Join-Path $pub 'icon-144.png')                         # ikon biasa (sudut transparan)
+Save-Canvas 192 192 (192 * 0.72) (Join-Path $pub 'icon-maskable-192.png') $back # ikon "maskable": logo di zona aman, latar penuh
+Save-Canvas 180 180 180 (Join-Path $pub 'apple-touch-icon.png') $back           # iPhone/iPad: tanpa transparansi
 $logo.Dispose()
+Write-Host "Ikon web ditulis ke $pub"
 Write-Host "Ikon peluncur untuk $($density.Count) kerapatan layar dan $count splash ditulis ke $res (latar $backHex)."

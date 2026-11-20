@@ -1,6 +1,7 @@
 // Minimap: lane & dinding (digambar sekali) + titik unit. Klik/seret untuk memindahkan kamera.
-import { BUSHES, MAP_SIZE, PINGS, type GameEvent } from '../../../shared/src';
+import { BUSHES, MAP_SIZE, PINGS, TITAN_PITS, type GameEvent } from '../../../shared/src';
 import type { EntityViews } from '../render/EntityViews';
+import type { FogOfWar } from '../render/fog';
 import { paintMinimap } from '../render/terrain';
 import type { SceneManager } from '../render/SceneManager';
 
@@ -51,9 +52,13 @@ export class Minimap {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  /** Lapisan kabut perang (diisi GameClient); kanvasnya digambar di atas latar minimap. */
+  fog: FogOfWar | null = null;
+
   /** Pesan cepat tim ditandai di minimap selama beberapa detik. */
   handle(events: GameEvent[]): void {
     for (const e of events) {
+      if (e.k === 'titan' && TITAN_PITS[e.pit]) this.pings.push({ x: TITAN_PITS[e.pit].x, z: TITAN_PITS[e.pit].z, color: '#ff9a3c', t0: this.clock }); // Titan: akan bangkit, bangkit, tumbang
       if (e.k === 'alert') this.pings.push({ x: e.x, z: e.z, color: '#ff4a4a', t0: this.clock }); // bangunan kita diserang
       if (e.k !== 'ping') continue;
       const color = '#' + (PINGS[e.kind]?.color ?? 0xffffff).toString(16).padStart(6, '0');
@@ -68,6 +73,12 @@ export class Minimap {
     this.acc = 0;
     const c = this.ctx;
     c.drawImage(this.bg, 0, 0);
+    // kabut perang: bagian peta yang tidak terlihat tim sendiri digelapkan
+    if (this.fog?.enabled) {
+      c.globalAlpha = 0.62;
+      c.drawImage(this.fog.canvas, 0, 0, SIZE, SIZE);
+      c.globalAlpha = 1;
+    }
     const selfId = this.views.selfId;
 
     for (const v of this.views.views.values()) {
@@ -84,12 +95,38 @@ export class Minimap {
           c.lineWidth = 1;
           c.strokeRect(x - 5, y - 5, 10, 10);
           break;
+        case 'ward':
+          // suar kawan: titik kecil dengan lingkaran tipis
+          c.beginPath();
+          c.arc(x, y, 2, 0, Math.PI * 2);
+          c.fill();
+          c.lineWidth = 1;
+          c.strokeStyle = 'rgba(255,255,255,0.75)';
+          c.stroke();
+          break;
         case 'minion':
           // minion super digambar lebih besar supaya lane yang terbuka terlihat dari minimap
-          if (v.st.sub === 'super') c.fillRect(x - 2, y - 2, 4.5, 4.5);
+          if (v.st.sub === 'siege') c.fillRect(x - 3, y - 3, 6.5, 6.5);
+          else if (v.st.sub === 'super') c.fillRect(x - 2, y - 2, 4.5, 4.5);
           else c.fillRect(x - 1, y - 1, 2.5, 2.5);
           break;
         case 'monster':
+          if (v.st.sub === 'titan') {
+            // Titan Astra: belah ketupat jingga yang berdenyut
+            const k = 5 + Math.sin(this.clock * 4) * 1.2;
+            c.fillStyle = '#ff8a3c';
+            c.beginPath();
+            c.moveTo(x, y - k);
+            c.lineTo(x + k, y);
+            c.lineTo(x, y + k);
+            c.lineTo(x - k, y);
+            c.closePath();
+            c.fill();
+            c.lineWidth = 1.2;
+            c.strokeStyle = '#1a0d05';
+            c.stroke();
+            break;
+          }
           c.beginPath();
           c.arc(x, y, 2, 0, Math.PI * 2);
           c.fill();

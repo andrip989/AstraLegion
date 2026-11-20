@@ -62,6 +62,9 @@ export class GameSounds {
         case 'trail':
           this.at('whoosh', e.x0, e.z0);
           break;
+        case 'zone':
+          this.at('whoosh', e.x, e.z, 1.2); // Titan mengangkat tinjunya
+          break;
         case 'text':
           if (e.s.startsWith('+')) sound.play('coin', 0.8);
           break;

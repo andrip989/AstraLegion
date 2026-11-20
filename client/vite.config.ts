@@ -32,7 +32,9 @@ function versionManifest(): Plugin {
         }
       };
       walk(outDir);
-      const list = files.filter((f) => f !== 'version.json').sort();
+      // Daftar ini dipakai pembaruan di dalam APK, yang mengunduh tiap file sebagai TEKS. Gambar dan
+      // manifest "pasang dari browser" bukan teks dan tidak dibutuhkan di dalam APK, jadi tidak didaftarkan.
+      const list = files.filter((f) => f !== 'version.json' && f !== 'manifest.json' && !/\.(png|jpe?g|webp|gif|ico)$/i.test(f)).sort();
       writeFileSync(join(outDir, 'version.json'), JSON.stringify({ version: APP_VERSION, files: list }, null, 1));
     },
   };

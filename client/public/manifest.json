@@ -1,0 +1,36 @@
+{
+ "name": "Astra Legion",
+ "short_name": "Astra Legion",
+ "description": "MOBA 3D bertema superhero: 3 lawan 3, hancurkan Core musuh.",
+ "lang": "id",
+ "start_url": "./",
+ "scope": "./",
+ "display": "fullscreen",
+ "display_override": [
+  "fullscreen",
+  "standalone"
+ ],
+ "orientation": "landscape",
+ "background_color": "#0b1020",
+ "theme_color": "#0b1020",
+ "icons": [
+  {
+   "src": "icon-144.png",
+   "sizes": "144x144",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-maskable-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "maskable"
+  },
+  {
+   "src": "logo.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  }
+ ]
+}

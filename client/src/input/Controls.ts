@@ -324,6 +324,9 @@ export class Controls {
     else if (k === 'g') this.onUi?.('quickbuy', true);
     else if (k === 'v') this.onUi?.('ping', true);
     else if (k === 'f') this.castSpell(false);
+    else if (k === 't') this.placeWard(false);
+    // angka 1-6: pakai item aktif di slot itu (selagi menu pesan cepat tertutup; di sana angka memilih pesan)
+    else if (k >= '1' && k <= '6' && k.length === 1 && document.getElementById('ping-menu')?.classList.contains('hidden') !== false) this.send({ t: 'use', slot: Number(k) - 1 });
     else if (k === 'tab') this.onUi?.('board', true);
     else if (k === 'escape') this.onUi?.('menu', true);
     else if (k === 'enter') {
@@ -351,6 +354,19 @@ export class Controls {
         : { x: me.x + Math.sin(me.rot) * (def?.range || 6), z: me.z + Math.cos(me.rot) * (def?.range || 6) };
     }
     this.send({ t: 'cast', slot, x: aim.x, z: aim.z });
+  }
+
+  /**
+   * Tanam suar penglihatan: di posisi kursor (keyboard), atau beberapa langkah di depan hero
+   * (tombol layar, `auto`). Server menjepit jaraknya.
+   */
+  placeWard(auto: boolean): void {
+    const me = this.views.self;
+    if (!me) return;
+    let aim: Vec2 | null = null;
+    if (!auto && this.mouse.inside) aim = this.sm.groundPoint(this.mouse.x, this.mouse.y);
+    if (!aim) aim = { x: me.x + Math.sin(me.rot) * 5, z: me.z + Math.cos(me.rot) * 5 };
+    this.send({ t: 'ward', x: aim.x, z: aim.z });
   }
 
   /**

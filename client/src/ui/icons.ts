@@ -102,6 +102,32 @@ Object.assign(ICONS, {
     .concat(`<circle cx="16" cy="16" r="3.400" fill="currentColor"/>`),
 });
 
+// Gale Archer
+/** Anak panah mendatar: bulu ekor di `x`, mata panah di `x + len`. */
+const arrow = (x: number, y: number, len: number, s = 1) =>
+  `<path d="M${x} ${y}h${len - 6 * s}" stroke="currentColor" stroke-width="${2.4 * s}" stroke-linecap="round"/>` +
+  `<path d="M${x + len} ${y}l${-8 * s} ${-4.4 * s}v${8.8 * s}z" fill="currentColor"/>`;
+
+Object.assign(ICONS, {
+  ga_piercer:
+    arrow(6, 16, 24) +
+    `<path d="M3 12.500l3.500 3.500-3.500 3.500M7 12.500l3.500 3.500-3.500 3.500" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="M9 9h10.500a2.600 2.600 0 1 0-2.600-2.600M12 23h9.500a2.600 2.600 0 1 1-2.600 2.600" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" opacity=".65"/>`,
+  ga_slip:
+    `<path d="M11 24.500a8.500 8.500 0 1 1 8.500-8.500c0 3-2.400 5.400-5.400 5.400S9 19.300 9 16.600c0-2 1.600-3.600 3.600-3.600" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" opacity=".7"/>` +
+    `<path d="m22 8 8 8-8 8" fill="none" stroke="currentColor" stroke-width="3.200" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ga_stance:
+    `<path d="M8 2.500c13 4.500 13 22.500 0 27" fill="none" stroke="currentColor" stroke-width="2.800" stroke-linecap="round"/>` +
+    `<path d="M8 2.500v27" stroke="currentColor" stroke-width="1.400" stroke-linecap="round"/>` +
+    arrow(3, 16, 27, 0.9) +
+    `<path d="m23 4 4.500 3.500L23 11M23 21l4.500 3.500L23 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>`,
+  ga_volley:
+    arrow(2, 7.500, 22, 0.85) +
+    arrow(8, 16, 23, 0.85) +
+    arrow(2, 24.500, 22, 0.85) +
+    `<path d="M2 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".6"/>`,
+});
+
 const FALLBACK =`<path d="m16 2 3.800 9.200L29.500 12l-7.300 6.400 2.200 9.600L16 22.900 7.600 28l2.200-9.600L2.500 12l9.700-.8z" fill="currentColor"/>`;
 
 /** Markup SVG lengkap untuk ikon sebuah skill. */
@@ -139,6 +165,11 @@ const ITEM_ICONS: Record<string, string> = {
     `<path d="M16 28C6 21 3 15.500 3 11a6.500 6.500 0 0 1 13-1.500A6.500 6.500 0 0 1 29 11c0 4.500-3 10-13 17z" fill="currentColor"/>` +
     `<path d="m16 12-3 5h3l-1.500 5 4.500-6h-3z" fill="#0b1020"/>`,
 };
+
+// item aktif
+ITEM_ICONS.aegis_plate = `<path d="M16 3 27 7v8c0 7-4.600 11.500-11 14C9.600 26.500 5 22 5 15V7z" fill="currentColor"/><path d="M16 8v16M9 14h14" stroke="#0b1020" stroke-width="2.400" fill="none"/>`;
+ITEM_ICONS.pure_charm = `<circle cx="16" cy="18" r="8" fill="currentColor"/><path d="M12 9c0-4 8-4 8 0" stroke="currentColor" stroke-width="2" fill="none"/><path d="m16 13 1.600 3.400 3.700.400-2.800 2.500.800 3.700L16 21.100 12.700 23l.800-3.700-2.800-2.500 3.700-.400z" fill="#0b1020"/>`;
+ITEM_ICONS.thunder_horn = `<path d="M4 20c8 0 14-4 18-12l6 3c-3 10-11 16-22 17z" fill="currentColor"/><path d="m18 14-3 5h3l-1.500 5 4.500-6h-3z" fill="#0b1020"/><circle cx="6" cy="24" r="2.400" fill="currentColor" opacity=".7"/>`;
 
 /** Markup SVG lengkap untuk ikon sebuah item. */
 export function itemIcon(id: string): string {

@@ -1,7 +1,7 @@
 // Efek visual sementara yang dipicu event server: proyektil, tebasan, sinar energi, gelombang
 // kejut, petir, jejak dash, percikan, asap, ledakan saat unit tumbang, teks melayang, penanda klik.
 import * as THREE from 'three';
-import { EMOTES, F_BUFF, F_RECALL, HEROES, PINGS, type GameEvent } from '../../../shared/src';
+import { EMOTES, F_BUFF, F_FLOW, F_RECALL, HEROES, PINGS, type GameEvent } from '../../../shared/src';
 import type { EntityViews, View } from './EntityViews';
 import { glowColor, TEAM_COLOR } from './palette';
 import { Particles } from './particles';
@@ -102,6 +102,12 @@ export class Effects {
       const p = v.root.position;
       const rot = v.model.rotation.y;
       const moving = v.anim.walk > 0.5;
+      if (v.flags & F_FLOW && Math.random() < 0.6) {
+        // Berkah Arus: butiran biru muda berputar naik
+        const c = glowColor(0x5fd4ff, 1.6);
+        const ang = Math.random() * Math.PI * 2;
+        this.glow.spawn({ x: p.x + Math.cos(ang) * 0.8, y: 0.1, z: p.z + Math.sin(ang) * 0.8, vy: rand(1.8, 3.4), life: 0.65, size: 0.22, size1: 0.05, r: c.r, g: c.g, b: c.b });
+      }
       if (v.flags & F_BUFF && Math.random() < 0.6) {
         // Berkah Golem: butiran emas naik dari kaki hero
         const c = glowColor(0xffc24a, 1.6);
@@ -518,6 +524,28 @@ export class Effects {
   }
 
   /** Penanda pesan cepat tim di tanah: tiga cincin yang melebar berurutan. */
+  /**
+   * Area bahaya di tanah: garis lingkaran seluas serangannya, dan cakram yang membesar sampai
+   * penuh tepat saat serangan itu mendarat (setelah `t` detik).
+   */
+  zone(x: number, z: number, r: number, t: number, color: number): void {
+    const edge = new THREE.Mesh(FLAT, glowMaterial(color, 1.1, 1, Tex.unitRing()));
+    edge.position.set(x, 0.12, z);
+    edge.scale.setScalar(r);
+    edge.renderOrder = 4;
+    // redup: yang penting bentuk areanya terbaca, hero dan Titan di dalamnya tetap terlihat
+    const fill = new THREE.Mesh(FLAT, glowMaterial(color, 0.32, 0.3, Tex.pool()));
+    fill.position.set(x, 0.1, z);
+    fill.renderOrder = 3;
+    const g = new THREE.Group();
+    g.add(edge, fill);
+    this.add(g, t, (k) => {
+      fill.scale.setScalar(Math.max(0.05, r * 1.25 * k));
+      fill.material.opacity = 0.22 + 0.33 * k;
+      edge.material.opacity = 0.55 + 0.45 * Math.abs(Math.sin(k * Math.PI * 5));
+    });
+  }
+
   ping(x: number, z: number, color: number): void {
     for (let i = 0; i < 3; i++) {
       this.after(i * 0.32, () => {
@@ -604,9 +632,18 @@ export class Effects {
         this.puffs(x, 0.3, z, 2, 0.3, 0.9, [0.4, 0.4, 0.42], 0.35, 0.7);
         break;
       case 'monster':
+        if (v.st.sub === 'titan') {
+          // Titan Astra runtuh: ledakan bara besar dan guncangan
+          this.sparks(x, 2.5, z, 0xff5a2a, 46, 11, 0.5, 1.1);
+          this.puffs(x, 0.4, z, 14, 2.4, 2.6, [0.3, 0.26, 0.3], 0.6, 1.6);
+          this.shock(x, z, 8, 0xff8a3c, 0.8, 1);
+          this.light(x, 3, z, 0xff8a3c, 90, 0.8);
+          this.shake(1.6);
+          break;
+        }
         this.sparks(x, 1, z, 0xffb040, 14, 6, 0.32, 0.6);
         this.puffs(x, 0.3, z, 5, 0.8, 1.4, [0.36, 0.33, 0.28], 0.45, 1);
-        this.shock(x, z, v.st.sub === 'big' ? 3 : 2, 0xffb040, 0.4, 1);
+        this.shock(x, z, v.st.sub === 'big' || v.st.sub === 'flow' ? 3 : 2, v.st.sub === 'flow' ? 0x5fd4ff : 0xffb040, 0.4, 1);
         break;
       case 'hero': {
         const accent = HEROES[v.st.sub]?.accent ?? 0xffffff;
@@ -735,6 +772,9 @@ export class Effects {
         }
         case 'ring':
           this.ring(e.x, e.z, e.r, e.c);
+          break;
+        case 'zone':
+          this.zone(e.x, e.z, e.r, e.t, e.c);
           break;
         case 'trail': {
           // jejak dash: pita cahaya + bayangan partikel di sepanjang lintasan

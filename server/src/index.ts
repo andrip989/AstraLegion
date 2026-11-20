@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { Server } from 'socket.io';
-import { MIN_RECORDED_ACTIONS, MIN_RECORDED_SECONDS, TICK_RATE, roomCode, type AccMatch, type ClientCommand, type JoinRequest, type JoinResult } from '../../shared/src';
-import { openAccounts, serveAccounts } from './accounts';
+import { MIN_RECORDED_ACTIONS, actionsNeeded, MIN_RECORDED_SECONDS, TICK_RATE, roomCode, type AccMatch, type ClientCommand, type JoinRequest, type JoinResult } from '../../shared/src';
+import { Social, openAccounts, serveAccounts } from './accounts';
 import { Game } from './game/Game';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -105,8 +105,18 @@ interface Room {
   lastTime: number;
   /** Detik bermain di pertandingan ini milik akun yang kursinya sudah dilepas (mis. halaman dimuat ulang). */
   played: Map<string, number>;
+  /** Akun yang keluar dari pertandingan ini sebelum selesai dan sudah dicatat kalah (lihat forfeit). */
+  left: Set<string>;
 }
-const newRoom = (): Room => ({ game: new Game(), acc: 0, settled: false, matchNo: 0, lastTime: 0, played: new Map() });
+const newRoom = (): Room => ({ game: new Game(), acc: 0, settled: false, matchNo: 0, lastTime: 0, played: new Map(), left: new Set() });
+/** Pertandingan baru dimulai di room ini (dunianya dibangun ulang): catatan per pertandingan dikosongkan. */
+function newMatch(room: Room): void {
+  room.matchNo++;
+  room.settled = false;
+  room.played.clear();
+  room.left.clear();
+  room.lastTime = room.game.time;
+}
 const rooms = new Map<string, Room>([['', newRoom()]]);
 /** Tiap room yang berisi pemain menjalankan simulasi sendiri, jadi jumlahnya dibatasi. */
 const MAX_ROOMS = 12;
@@ -137,6 +147,12 @@ interface Session {
 const sessions = new Map<string, Session>();
 const GRACE_MS = 60_000;
 
+/** Kehadiran pemain untuk daftar teman: sebuah akun "sedang bermain" selama ia menduduki kursi di pertandingan. */
+const social = new Social(accountDb, (key) => {
+  for (const s of sessions.values()) if (s.account === key) return true;
+  return false;
+});
+
 /** Detik pemain ini sudah ikut di pertandingan yang sedang berjalan di room-nya. */
 function secondsPlayed(room: Room, s: Session): number {
   return Math.max(0, room.game.time - (s.matchNo === room.matchNo ? s.joinedAt : 0));
@@ -144,13 +160,18 @@ function secondsPlayed(room: Room, s: Session): number {
 
 /**
  * Pertandingan di sebuah room selesai: catat hasilnya ke akun tiap pemain yang masuk akun, dari
- * data simulasi server sendiri (hero, menang/kalah, K/D/A, lama ikut bermain). Dipanggil sekali
- * per pertandingan; client tidak punya cara untuk mengirim statistiknya sendiri.
+ * data simulasi server sendiri (hero, menang/kalah, K/D/A, lama ikut bermain, dan keadaan room
+ * yang menentukan poin peringkat). Dipanggil sekali per pertandingan; client tidak punya cara
+ * untuk mengirim statistiknya sendiri.
  */
 function settleMatch(code: string, room: Room): void {
   const game = room.game;
   /** Satu akun hanya dicatat sekali per pertandingan, walau entah bagaimana menduduki dua kursi. */
   const credited = new Set<string>();
+  /** Tim yang masih berisi pemain manusia saat pertandingan selesai (bonus poin peringkat untuk lawannya). */
+  const humans = [false, false];
+  // hanya yang benar-benar bermain: tab kedua yang diam di tim lawan tidak memberi bonus
+  for (const p of game.players.values()) if (p.hero.actions >= actionsNeeded(game.time)) humans[p.hero.team] = true;
   let recorded = 0;
   for (const s of sessions.values()) {
     if (s.room !== code || !s.account || credited.has(s.account)) continue;
@@ -160,38 +181,91 @@ function settleMatch(code: string, room: Room): void {
     credited.add(s.account);
     const seconds = Math.round((room.played.get(s.account) ?? 0) + secondsPlayed(room, s));
     let result: AccMatch | null;
-    if (seconds < MIN_RECORDED_SECONDS) {
+    if (room.left.has(s.account)) {
+      // sempat keluar dari pertandingan ini lalu masuk lagi: sudah dicatat kalah saat keluar, tidak dicatat dua kali
+      result = { account, xp: 0, missions: [], unlocked: [], skipped: 'left' };
+    } else if (seconds < MIN_RECORDED_SECONDS) {
       // baru bergabung menjelang akhir (mis. menumpang kemenangan orang lain): tidak dihitung
       result = { account, xp: 0, missions: [], unlocked: [], skipped: 'short' };
-    } else if (p.hero.actions < MIN_RECORDED_ACTIONS) {
-      // diam saja sepanjang pertandingan: tidak ada XP gratis untuk papan peringkat
-      result = { account, xp: 0, missions: [], unlocked: [], skipped: 'afk' };
+    } else if (p.hero.actions < actionsNeeded(seconds)) {
+      // Nyaris diam sepanjang pertandingan: tidak ada XP atau kemenangan gratis, dan untuk poin
+      // peringkat dihitung kalah (seperti keluar), supaya diam bukan cara menghindari kekalahan.
+      const h = p.hero;
+      const lost = accountDb.recordMatch(
+        s.account,
+        { hero: h.def.id, win: false, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online', left: true },
+        { botLevel: game.botLevel, humanEnemy: false, quick: game.mode === 'kilat' },
+      );
+      result = { account: lost?.account ?? account, xp: 0, missions: [], unlocked: [], skipped: 'afk', ...(lost ? { rp: lost.rp } : {}) };
     } else {
       const h = p.hero;
-      result = accountDb.recordMatch(s.account, { hero: h.def.id, win: h.team === game.winner, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online' });
+      result = accountDb.recordMatch(
+        s.account,
+        { hero: h.def.id, win: h.team === game.winner, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online' },
+        { botLevel: game.botLevel, humanEnemy: humans[h.team === 0 ? 1 : 0], quick: game.mode === 'kilat' },
+      );
       if (result) recorded++;
     }
     if (result) io.sockets.sockets.get(s.socketId)?.emit('acc:match', result);
   }
-  if (credited.size) console.log(`[akun] hasil pertandingan room ${code || '(umum)'} dicatat untuk ${recorded} akun${credited.size > recorded ? ` (${credited.size - recorded} dilewati: baru bergabung atau tidak ikut bermain)` : ''}`);
+  if (credited.size) console.log(`[akun] hasil pertandingan room ${code || '(umum)'} dicatat untuk ${recorded} akun${credited.size > recorded ? ` (${credited.size - recorded} dilewati: baru bergabung, tidak ikut bermain, atau sudah keluar)` : ''}`);
 }
 
-/** Keluarkan pemain dari room-nya untuk seterusnya. */
-function dropSession(token: string): void {
+/**
+ * Kursi sebuah akun dilepas selagi pertandingannya masih berjalan (sengaja keluar, masa tunggu
+ * sambung-ulang habis, keluar akun, atau akun itu pindah bermain ke tempat lain): dihitung kalah.
+ * Bila pemain itu sudah cukup ikut bermain (syarat yang sama dengan pencatatan biasa), kekalahan
+ * dicatat saat itu juga dengan K/D/A-nya sampai saat itu, dan akunnya ditandai supaya tidak
+ * dicatat lagi untuk pertandingan yang sama bila ia masuk kembali. Tanpa ini, keluar sebelum
+ * kalah akan menghindarkan pemain dari kehilangan poin peringkat.
+ * Mengembalikan true bila kekalahan dicatat.
+ */
+function forfeit(room: Room, s: Session): boolean {
+  const key = s.account;
+  if (!key || room.settled || room.game.winner !== null || room.left.has(key)) return false;
+  const p = room.game.players.get(s.socketId);
+  if (!p) return false;
+  const seconds = Math.round((room.played.get(key) ?? 0) + secondsPlayed(room, s));
+  if (seconds < MIN_RECORDED_SECONDS || p.hero.actions < MIN_RECORDED_ACTIONS) return false; // baru sebentar ikut: tidak ada yang dicatat
+  const h = p.hero;
+  const result = accountDb.recordMatch(
+    key,
+    { hero: h.def.id, win: false, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online', left: true },
+    { botLevel: room.game.botLevel, humanEnemy: false, quick: room.game.mode === 'kilat' },
+  );
+  if (!result) return false;
+  room.left.add(key);
+  room.played.delete(key);
+  console.log(`[akun] keluar sebelum pertandingan selesai di room ${s.room || '(umum)'}: dicatat kalah`);
+  return true;
+}
+
+/**
+ * Keluarkan pemain dari room-nya untuk seterusnya. `why`: 'leave' = pemainnya yang pergi (dihitung
+ * kalah bila pertandingan masih berjalan, lihat forfeit); 'server' = server sendiri yang melepas
+ * kursinya (server dimatikan, room dibubarkan), jadi pemainnya tidak dihukum.
+ */
+function dropSession(token: string, why: 'leave' | 'server' = 'leave'): void {
   const s = sessions.get(token);
   if (!s) return;
   sessions.delete(token);
   if (s.timer) clearTimeout(s.timer);
   const room = rooms.get(s.room);
-  if (!room) return;
-  // waktu bermainnya tetap dihitung bila akun itu masuk lagi ke pertandingan yang sama
-  if (s.account && !room.settled) room.played.set(s.account, (room.played.get(s.account) ?? 0) + secondsPlayed(room, s));
-  room.game.removePlayer(s.socketId);
-  if (room.game.players.size === 0) {
-    // kosong: room pribadi dihapus, room umum di-reset supaya pemain berikutnya mulai dari awal
-    if (s.room) rooms.delete(s.room);
-    else room.game.setupWorld();
+  if (room) {
+    const lost = why === 'leave' && forfeit(room, s);
+    // waktu bermainnya tetap dihitung bila akun itu masuk lagi ke pertandingan yang sama
+    if (s.account && !lost && !room.settled && !room.left.has(s.account)) room.played.set(s.account, (room.played.get(s.account) ?? 0) + secondsPlayed(room, s));
+    room.game.removePlayer(s.socketId);
+    if (room.game.players.size === 0) {
+      // kosong: room pribadi dihapus, room umum di-reset supaya pemain berikutnya mulai dari awal
+      if (s.room) rooms.delete(s.room);
+      else {
+        room.game.setupWorld();
+        newMatch(room);
+      }
+    }
   }
+  if (s.account) social.touch(s.account);
 }
 
 let anonymous = 0;
@@ -203,10 +277,19 @@ io.on('connection', (socket) => {
   let token: string | null = null;
   /** Client lama tidak mengirim token: sesinya tidak bisa dilanjutkan, jadi langsung dilepas saat putus. */
   let resumable = false;
-  /** Akun yang masuk di socket ini. Keluar akun di tengah pertandingan melepas kursinya dari akun itu. */
-  const seat = serveAccounts(socket, accountDb, () => {
+  /**
+   * Akun yang masuk di socket ini. Keluar akun di tengah pertandingan melepas kursinya dari akun
+   * itu, dan dihitung sama dengan meninggalkan pertandingan (lihat forfeit): kalau tidak, keluar
+   * akun menjelang kalah akan menghindarkan pemain dari kehilangan poin peringkat.
+   */
+  const seat = serveAccounts(socket, accountDb, social, () => {
     const s = token ? sessions.get(token) : undefined;
-    if (s && s.socketId === socket.id) s.account = null;
+    if (!s || s.socketId !== socket.id || !s.account) return;
+    const account = s.account;
+    const room = rooms.get(s.room);
+    if (room) forfeit(room, s);
+    s.account = null;
+    social.touch(account);
   });
 
   socket.on('join', (req: JoinRequest, ack?: (r: JoinResult) => void) => {
@@ -265,11 +348,15 @@ io.on('connection', (socket) => {
     const team = req?.team === 0 || req?.team === 1 ? req.team : undefined;
     const spell = typeof req?.spell === 'string' ? req.spell : undefined;
     // pemain yang masuk akun selalu tampil dengan nama akunnya
-    const result = room.game.addPlayer(socket.id, seat.name() ?? String(req?.name ?? ''), String(req?.heroId ?? ''), team, spell, req?.skin, req?.bots);
+    const mode = typeof req?.mode === 'string' ? req.mode : undefined;
+    const talent = typeof req?.talent === 'string' ? req.talent : undefined;
+    const result = room.game.addPlayer(socket.id, seat.name() ?? String(req?.name ?? ''), String(req?.heroId ?? ''), team, spell, req?.skin, req?.bots, mode, talent);
     if (result.ok) {
+      room.game.setCaps(socket.id, req?.caps);
       resumable = !!want && !sessions.has(want);
       token = resumable ? want : `anon-${++anonymous}-${socket.id}`;
       sessions.set(token, { room: code, socketId: socket.id, timer: null, account, matchNo: room.matchNo, joinedAt: room.game.time });
+      if (account) social.touch(account); // teman-temannya melihat "sedang bermain"
       result.room = code;
       result.players = room.game.players.size;
       console.log(`[join] ${socket.id} -> room ${code || '(umum)'}, tim ${result.team} (${room.game.players.size} pemain, ${rooms.size} room)`);
@@ -302,9 +389,11 @@ io.on('connection', (socket) => {
     token = null;
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     const s = token ? sessions.get(token) : undefined;
     if (!token || !s || s.socketId !== socket.id) return; // sudah keluar, atau sesi sudah pindah ke socket baru
+    // server sendiri yang menutup semua sambungan (sedang dimatikan): pemainnya tidak dihitung keluar
+    if (reason === 'server shutting down') return dropSession(token, 'server');
     if (!resumable) return dropSession(token);
     // hero pulang ke base selagi pemiliknya menyambung ulang, supaya tidak jadi sasaran empuk
     rooms.get(s.room)?.game.handleCommand(socket.id, { t: 'recall' });
@@ -332,12 +421,7 @@ setInterval(() => {
       game.update(STEP);
       room.acc -= STEP;
       ticked = true;
-      if (game.time < room.lastTime) {
-        // dunia dibangun ulang: pertandingan baru
-        room.matchNo++;
-        room.settled = false;
-        room.played.clear();
-      }
+      if (game.time < room.lastTime) newMatch(room); // dunia dibangun ulang: pertandingan baru
       room.lastTime = game.time;
       if (game.winner !== null && !room.settled) {
         room.settled = true;

@@ -1,6 +1,9 @@
 // Perakit sisi client: menerima snapshot dari transport, memperbarui tampilan, suara & HUD,
 // meneruskan input pemain sebagai perintah ke server, dan mencatat hasil pertandingan ke akun.
-import type { Snapshot } from '../../../shared/src';
+import { dayPhase, type Snapshot } from '../../../shared/src';
+import { FogOfWar } from '../render/fog';
+import type { Game } from '../../../server/src/game/Game';
+import { Training, trainingWanted } from '../ui/Training';
 import { accountLevel, accounts } from '../account/accounts';
 import { GameSounds } from '../audio/gameSounds';
 import { sound } from '../audio/Sound';
@@ -17,6 +20,12 @@ import { Minimap } from '../ui/Minimap';
 import { closeModal, isModalOpen, openSettings } from '../ui/panels';
 
 export class GameClient {
+  /** Kabut perang: lapisan gelap di luar jarak pandang tim sendiri. */
+  private fog: FogOfWar;
+  private night = false;
+  /** Pertandingan ini mode latihan bebas (offline): hasilnya tidak dicatat ke akun mana pun. */
+  private training = false;
+  private sight: number[] = [];
   private sm: SceneManager;
   private map: MapView;
   private views: EntityViews;
@@ -45,6 +54,7 @@ export class GameClient {
     // tanpa shadow map (layar sentuh), unit diberi bayangan bulat sederhana
     this.views = new EntityViews(this.sm.scene, !this.sm.renderer.shadowMap.enabled);
     this.fx = new Effects(this.sm, this.views);
+    this.fog = new FogOfWar(this.sm.scene);
     this.sounds = new GameSounds(this.views);
     this.views.onFootstep = (x, z) => this.fx.dust(x, z);
     this.views.onDeath = (v) => {
@@ -63,6 +73,9 @@ export class GameClient {
       chat: (s, all) => transport.send({ t: 'chat', s, all }),
       ping: (kind) => transport.send({ t: 'ping', kind }),
       emote: (kind) => transport.send({ t: 'emote', kind }),
+      surrender: (vote) => transport.send({ t: 'surrender', vote }),
+      useItem: (slot) => transport.send({ t: 'use', slot }),
+      ward: () => this.controls.placeWard(true),
       spell: () => this.controls.castSpell(true),
       toLobby: () => this.toLobby(),
       aim: (slot, v, cancel) => this.controls.aimSkill(slot, v, cancel),
@@ -83,6 +96,13 @@ export class GameClient {
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, this.sm, this.views, () =>
       this.controls.setFollow(false),
     );
+    this.minimap.fog = this.fog;
+    // mode latihan bebas: hanya untuk pertandingan offline (simulasinya ada di browser ini)
+    const local = (transport as unknown as { game?: Game | null }).game;
+    if (transport.mode === 'offline' && local && trainingWanted()) {
+      this.training = true;
+      new Training(local, 'local', (text) => this.hud.feed(text));
+    }
 
     const followBtn = document.getElementById('follow-btn')!;
     const syncFollow = (on: boolean) => followBtn.classList.toggle('on', on);
@@ -114,6 +134,10 @@ export class GameClient {
   private onSnapshot(s: Snapshot): void {
     this.views.apply(s);
     this.sm.setMatchTime(s.t); // suasana siang, senja, malam mengikuti waktu pertandingan
+    this.fog.setEnabled(s.you.ward !== undefined); // server lama tidak memakai kabut perang
+    this.night = dayPhase(s.t) === 'malam';
+    // pemain yang dibisukan: obrolan, pesan cepat, dan emotenya dibuang sebelum sampai ke layar dan suara
+    if (this.hud.hasMuted) s.events = s.events.filter((e) => !this.hud.isMuted(e));
     this.fx.handle(s.events);
     this.sounds.handle(s.events);
     this.minimap.handle(s.events);
@@ -158,8 +182,13 @@ export class GameClient {
       `<div class="go-row"><span>K / D / A</span><b>${r.k} / ${r.d} / ${r.a}</b></div><div class="go-row"><span>Durasi</span><b>${minutes}</b></div>`;
     // K/D/A tampil dulu; baris akun menyusul begitu hasilnya jelas (akun online menunggu kabar server)
     this.hud.setMatchSummary(head(rec));
+    if (this.training) {
+      // mode latihan bebas: level dan emas bisa diatur sesuka hati, jadi hasilnya tidak dicatat ke akun mana pun
+      this.hud.setMatchSummary(head(rec) + '<small class="go-note">Mode latihan: hasil pertandingan ini tidak dicatat.</small>');
+      return;
+    }
     const before = accounts.current();
-    const { account, xp, missions, unlocked, skipped } = await accounts.recordMatch(rec);
+    const { account, xp, missions, unlocked, skipped, rank, rankNote } = await accounts.recordMatch(rec);
     if (this.lastOver === null) return; // pertandingan berikutnya sudah dimulai selagi menunggu
     // yang tercatat di akun (untuk akun online: angka server) adalah yang ditampilkan
     let html = head((!skipped && account?.profile.history[0]) || rec);
@@ -173,10 +202,27 @@ export class GameClient {
         `<div class="go-row"><span>XP akun</span><b>+${xp}</b></div>` +
         `<div class="xpbar"><div style="width:${Math.round((lv.into / lv.need) * 100)}%"></div></div>` +
         `<small>${up ? 'Naik ke level akun' : 'Level akun'} ${lv.level} · ${lv.into} / ${lv.need} XP</small>`;
+      // Poin peringkat (angka server; hanya pertandingan online dengan akun online). Nama dan id
+      // tier berasal dari tabel milik client sendiri, dan lencananya digambar CSS (.tier di account.css).
+      let tierUp = false;
+      if (rank) {
+        const points = rank.delta > 0 ? `+${rank.delta}` : rank.delta < 0 ? `&minus;${-rank.delta}` : '&plusmn;0';
+        const badge = `<span class="tier t-${rank.tier.id}"><i></i>${rank.tier.name}</span>`;
+        html += `<div class="go-row rank ${rank.delta < 0 ? 'down' : 'up'}"><span>Peringkat ${badge}</span><b>${points} poin peringkat</b></div>`;
+        if (rank.was) {
+          tierUp = rank.was.min < rank.tier.min;
+          html += `<div class="go-row tier-move ${tierUp ? 'up' : 'down'}"><span>${tierUp ? 'Naik tier' : 'Turun tier'}</span><b>${rank.was.name} &rarr; ${rank.tier.name}</b></div>`;
+        } else if (rank.delta === 0 && !win) {
+          html += `<small class="go-rank-none">Poin peringkat tidak bisa turun di bawah 0.</small>`;
+        }
+      } else if (rankNote) {
+        // akun tanpa tier (akun di perangkat, server versi lama): katakan itu, bukan tier tiruan
+        html += `<small class="go-rank-none">${rankNote}</small>`;
+      }
       // misi harian yang tercapai dan pencapaian yang baru terbuka
       for (const m of missions) html += `<div class="go-row bonus"><span>Misi: ${m.text}</span><b>+${m.xp} XP</b></div>`;
       for (const name of unlocked) html += `<div class="go-row bonus"><span>Pencapaian baru</span><b>${name}</b></div>`;
-      if (up || missions.length || unlocked.length) sound.play('levelup');
+      if (up || tierUp || missions.length || unlocked.length) sound.play('levelup');
     } else {
       html += `<small>Bermain sebagai tamu: masuk atau daftar akun supaya XP (+${xp}) dan statistik tersimpan.</small>`;
     }
@@ -192,6 +238,7 @@ export class GameClient {
 
     this.map.update(this.time);
     this.views.update(dt, this.sm.camera, this.time);
+    if (this.fog.enabled) this.fog.update(dt, this.views.visionSources(this.night, this.sight));
     this.controls.update(dt);
     // selagi tumbang, kamera mengikuti kawan yang sedang ditonton
     const watched = this.hud.spectating ? this.views.get(this.hud.spectating) : undefined;

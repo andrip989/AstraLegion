@@ -1,14 +1,14 @@
 // Protokol jaringan client <-> server.
-import type { Team } from './constants';
+import type { GameMode, Team } from './constants';
 
-export type EntityKind = 'hero' | 'minion' | 'tower' | 'core' | 'monster';
+export type EntityKind = 'hero' | 'minion' | 'tower' | 'core' | 'monster' | 'ward';
 
 /** Data entity yang tidak berubah; dikirim sekali saat entity pertama kali terlihat. */
 export interface EntityStatic {
   id: number;
   kind: EntityKind;
   team: Team;
-  sub: string; // id hero / 'melee' | 'ranged' / 'small' | 'big'
+  sub: string; // id hero / 'melee' | 'ranged' | 'super' | 'siege' / 'small' | 'big' | 'flow' | 'titan'
   name: string;
   radius: number;
   /** Skin warna hero (indeks di SKINS); tidak dikirim untuk skin asli. */
@@ -26,6 +26,7 @@ export const F_INVULN = 16;
 export const F_RECALL = 32; // sedang menyalurkan recall ke base
 export const F_BUFF = 64; // membawa Berkah Golem (bonus damage sementara)
 export const F_BUSH = 128; // hero sedang berdiri di dalam semak persembunyian
+export const F_FLOW = 256; // membawa Berkah Arus (mana pulih cepat, cooldown lebih pendek)
 
 export interface HeroInfo {
   id: number;
@@ -69,6 +70,21 @@ export interface SelfState {
   buyAnywhere?: boolean;
   /** Pengurangan cooldown dari item, pecahan. */
   cdr?: number;
+  /** Sisa jeda kemampuan aktif tiap slot item, dalam detik (0 = siap atau bukan item aktif); hanya dikirim bila ada item aktif. */
+  itemCds?: number[];
+  /**
+   * Sisa jeda menanam suar, dalam detik (0 = siap). Adanya angka ini juga tanda server memakai kabut
+   * perang; server lama tidak mengirimnya dan client tidak menggelapkan apa pun.
+   */
+  ward?: number;
+  /** Hero sedang dikendalikan bot karena pemainnya diam terlalu lama (hilang begitu ia memberi perintah). */
+  afk?: 1;
+  /** Sisa detik Berkah Golem, Berkah Arus, dan Berkah Titan (tidak dikirim bila tidak aktif). */
+  golem?: number;
+  flow?: number;
+  titan?: number;
+  /** Talenta yang dibawa (server lama: tidak ada). */
+  talent?: string;
   /** Mantra tempur yang dibawa dan sisa cooldown-nya dalam detik (server lama: tidak ada). */
   spell?: string;
   spellCd?: number;
@@ -98,6 +114,14 @@ export type GameEvent =
   | { k: 'alert'; team: Team; x: number; z: number; core?: 1 }
   // rekap saat hero `to` tumbang: siapa saja yang melukainya 10 detik terakhir (hanya untuk pemiliknya)
   | { k: 'recap'; to: number; list: { name: string; n: number }[] }
+  // pemungutan suara menyerah tim `team` (hanya dikirim ke tim itu): `yes` setuju dari `need` yang dibutuhkan,
+  // `left` detik tersisa, `by` nama pengusul; `done` terisi saat selesai ('pass' = tim menyerah)
+  | { k: 'vote'; team: Team; yes: number; need: number; left: number; by: string; done?: 'pass' | 'fail' }
+  // Titan Astra: 'soon' = akan bangkit sebentar lagi, 'spawn' = bangkit, 'slain' = ditumbangkan tim `team`.
+  // `pit` = indeks TITAN_PITS
+  | { k: 'titan'; s: 'soon' | 'spawn' | 'slain'; pit: number; team?: Team }
+  // area bahaya di tanah: lingkaran radius `r` yang terisi selama `t` detik sebelum serangannya mendarat
+  | { k: 'zone'; x: number; z: number; r: number; t: number; c: number }
   // emote (lihat EMOTES) di atas kepala hero `a`; terlihat semua pemain
   | { k: 'emote'; a: number; kind: number }
   | { k: 'msg'; s: string };
@@ -107,6 +131,12 @@ export interface Snapshot {
   spawn: EntityStatic[];
   ents: EntityDyn[];
   heroes?: HeroInfo[]; // dikirim beberapa kali per detik saja
+  /** Mode pertandingan room ini bila bukan klasik (server lama: tidak ada); dikirim bersama `heroes`. */
+  mode?: GameMode;
+  /** Sisa waktu pertandingan dalam detik, untuk mode yang berbatas waktu; dikirim bersama `heroes`. */
+  left?: number;
+  /** Titan Astra: [detik sampai bangkit (0 = sedang hidup), indeks sarang]; dikirim bersama `heroes`. */
+  titan?: [number, number];
   you: SelfState;
   events: GameEvent[];
   score: [number, number];
@@ -128,6 +158,12 @@ export type ClientCommand =
   | { t: 'ping'; kind: number }
   // mantra tempur, dibidik ke titik (x, z)
   | { t: 'spell'; x: number; z: number }
+  // tanam suar penglihatan di (x, z); server menjepitnya ke jarak WARD_RANGE dari hero
+  | { t: 'ward'; x: number; z: number }
+  // pakai kemampuan aktif item di slot `slot`
+  | { t: 'use'; slot: number }
+  // menyerah: mengajukan pemungutan suara tim, atau memberi suara (vote: false = menolak)
+  | { t: 'surrender'; vote?: boolean }
   // emote di atas kepala hero sendiri; `kind` = indeks di EMOTES
   | { t: 'emote'; kind: number };
 
@@ -151,9 +187,17 @@ export const PINGS = [
 export const SHUTDOWN_STREAK = 3;
 export const SHUTDOWN_GOLD = 60;
 
+/**
+ * Tingkat kemampuan client ini, dikirim saat bergabung. Server tidak mengirim hal yang belum
+ * dikenal client lama (2 = mengenal entity 'ward'). Naikkan bila menambah jenis entity baru.
+ */
+export const CLIENT_CAPS = 2;
+
 export interface JoinRequest {
   name: string;
   heroId: string;
+  /** Tingkat kemampuan client (CLIENT_CAPS); client lama tidak mengirimnya. */
+  caps?: number;
   /** Kode room pribadi (lihat roomCode); kosong = room umum. */
   room?: string;
   /** Tim yang diinginkan. Tanpa ini, atau bila tim itu penuh, server yang memilihkan. */
@@ -166,6 +210,10 @@ export interface JoinRequest {
   bots?: number;
   /** Token acak milik client. Bergabung lagi dengan token yang sama melanjutkan hero yang masih ditahan server. */
   session?: string;
+  /** Talenta pilihan (id di TALENTS); tanpa ini dipakai talenta bawaan. */
+  talent?: string;
+  /** Mode pertandingan pilihan pemain; berlaku bila ia pemain pertama di room itu (seperti tingkat bot). */
+  mode?: GameMode;
 }
 
 export interface JoinResult {

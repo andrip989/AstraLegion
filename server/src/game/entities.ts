@@ -1,5 +1,5 @@
 // Kelas data entity. Logika perilaku ada di ai.ts / heroLogic.ts / skills/.
-import { sumItemStats, xpForLevel, MAX_LEVEL, type EntityKind, type HeroDef, type Team, type Vec2, DEFAULT_SPELL } from '../../../shared/src';
+import { sumItemStats, xpForLevel, MAX_LEVEL, type EntityKind, type HeroDef, type Team, type Vec2, DEFAULT_SPELL, DEFAULT_TALENT, TALENTS } from '../../../shared/src';
 
 export class Unit {
   id = 0;
@@ -23,6 +23,9 @@ export class Unit {
   slowFactor = 1;
   bountyGold = 0;
   bountyXp = 0;
+  /** Kabut perang: apakah unit ini sedang terlihat oleh tim Biru / tim Merah (dihitung Game tiap tick). */
+  seen0 = false;
+  seen1 = false;
 
   constructor(
     public kind: EntityKind,
@@ -55,11 +58,36 @@ export class Core extends Unit {
   }
 }
 
+/** Suar penglihatan milik seorang hero: diam, tidak bisa diserang, tidak terlihat lawan, padam sendiri. */
+export class Ward extends Unit {
+  constructor(
+    team: Team,
+    x: number,
+    z: number,
+    public ownerId: number,
+    public expireAt: number,
+  ) {
+    super('ward', team, x, z);
+    this.sub = 'ward';
+    this.name = 'Suar';
+    this.radius = 0.4;
+    this.invulnerable = true;
+  }
+}
+
 export class Monster extends Unit {
   camp = 0;
   homeX = 0;
   homeZ = 0;
   aggroId = 0;
+  // ---- hanya dipakai Titan Astra
+  /** Sedang bertarung sampai waktu ini (diperpanjang tiap kali dilukai hero). */
+  combatUntil = 0;
+  /** Waktu hantaman berikutnya, dan sampai kapan ia diam mengangkat tinju. */
+  slamAt = 0;
+  windupUntil = 0;
+  /** Tim hero terakhir yang melukainya (-1 = belum ada). */
+  lastTeam = -1;
   constructor(x: number, z: number) {
     super('monster', 2, x, z);
     this.homeX = x;
@@ -119,6 +147,16 @@ export class Hero extends Unit {
   lastKillAt = -99;
   /** Berkah Golem aktif sampai waktu ini (bonus damage). */
   buffUntil = 0;
+  /** Talenta pilihan pemain (id di TALENTS); bonusnya ikut dihitung di recalc. */
+  talent = DEFAULT_TALENT;
+  /** Sisa jeda menanam suar (detik). */
+  wardCd = 0;
+  /** Sisa jeda kemampuan aktif per id item (detik). */
+  itemCd: Record<string, number> = {};
+  /** Berkah Arus aktif sampai waktu ini. */
+  flowUntil = 0;
+  /** Berkah Titan aktif sampai waktu ini. */
+  titanUntil = 0;
   /** Jumlah perintah bermain (gerak, serang, skill, mantra) dari pemiliknya; untuk mengenali pemain yang diam saja. */
   actions = 0;
   /** Damage yang baru diterima: [waktu, nama sumber, jumlah] berurutan, untuk rekap saat tumbang. */
@@ -158,7 +196,7 @@ export class Hero extends Unit {
   /** Hitung ulang stat dari level + item. */
   recalc(): void {
     const n = this.level - 1;
-    const it = sumItemStats(this.items);
+    const it = sumItemStats(this.items, TALENTS[this.talent]?.stats);
     this.maxHp = Math.round(this.def.hp + this.def.hpGrowth * n + it.hp);
     this.maxMana = Math.round(this.def.mana + this.def.manaGrowth * n + it.mana);
     this.attackDamage = this.def.damage + this.def.damageGrowth * n + it.damage;

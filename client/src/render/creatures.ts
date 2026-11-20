@@ -254,27 +254,59 @@ export function buildLizard(model: THREE.Group): Rig {
 }
 
 /** Golem rimba: bongkahan batu berlumut dengan inti dan retakan yang menyala. */
-export function buildGolem(model: THREE.Group): Rig {
-  const ROCK = 0x9a8c78;
-  const ROCK_DARK = 0x6e6252;
-  const AMBER = 0xffb040;
+/** Tampilan golem: golem rimba biasa, Titan Astra, atau Raksasa Astra milik sebuah tim. */
+export interface GolemLook {
+  /** Awalan kunci cache geometri (tiap tampilan punya geometrinya sendiri). */
+  key: string;
+  rock: number;
+  rockDark: number;
+  glow: number;
+  glowPower: number;
+  /** Warna dan kadar "lumut" di sisi atas batu (0 = tanpa). */
+  moss: number;
+  mossy: number;
+  /** Tanduk dan duri kristal tambahan (Titan). */
+  horns: boolean;
+}
+const GOLEM_LOOK: GolemLook = { key: 'golem', rock: 0x9a8c78, rockDark: 0x6e6252, glow: 0xffb040, glowPower: 1.0, moss: 0x5f8a3a, mossy: 1, horns: false };
+/** Golem Arus: batu sungai kebiruan dengan nyala biru muda dan lumut toska. */
+export const FLOW_LOOK: GolemLook = { key: 'flow', rock: 0x7f93a6, rockDark: 0x4d6072, glow: 0x5fd4ff, glowPower: 1.3, moss: 0x3f9a8c, mossy: 1, horns: false };
+/** Titan Astra: obsidian gelap berabu dengan bara merah-jingga. */
+export const TITAN_LOOK: GolemLook = { key: 'titan', rock: 0x57505f, rockDark: 0x2f2a37, glow: 0xff5a2a, glowPower: 1.7, moss: 0x8a8590, mossy: 0.35, horns: true };
+/** Raksasa Astra: batu pucat dengan nyala warna timnya. */
+export const siegeLook = (team: number): GolemLook => ({
+  key: 'siege' + team,
+  rock: 0xa9adb8,
+  rockDark: 0x6c7180,
+  glow: TEAM_COLOR[team] ?? 0xffffff,
+  glowPower: 1.5,
+  moss: TEAM_COLOR[team] ?? 0xffffff,
+  mossy: 0.45,
+  horns: false,
+});
+
+export function buildGolem(model: THREE.Group, look: GolemLook = GOLEM_LOOK): Rig {
+  const K = look.key;
+  const ROCK = look.rock;
+  const ROCK_DARK = look.rockDark;
+  const AMBER = look.glow;
   const m = rockMat();
-  const moss = new THREE.Color(0x5f8a3a);
+  const moss = new THREE.Color(look.moss);
   /** Bongkahan batu: lumut di sisi yang menghadap atas, UV kotak untuk detail batu. */
   const rocky = (key: string, parts: Part[], mossy = 0.8) =>
     cached(key, () => {
       const geo = build(parts.map((p) => ({ ...p, flat: true })));
       tint(geo, (_x, _y, _z, ny, c) => {
-        c.lerp(moss, Math.min(1, Math.max(0, (ny - 0.6) * 2.5)) * mossy);
+        c.lerp(moss, Math.min(1, Math.max(0, (ny - 0.6) * 2.5)) * mossy * look.mossy);
       });
       return boxUV(geo, 0.7);
     });
   const ico = (r: number) => new THREE.IcosahedronGeometry(r, 1);
-  const glow = glowMat(AMBER, 1.0);
+  const glow = glowMat(AMBER, look.glowPower);
   const HIP = 1.0;
 
   const legGeo = rocky(
-    'golemLeg',
+    K + 'Leg',
     [
       { g: box(0.48, 0.56, 0.5), c: ROCK_DARK, p: [0, -0.26, 0], warp: 0.05, seed: 1 },
       { g: ico(0.36), c: ROCK, p: [0, -0.62, 0.02], s: [1, 0.95, 1.05], warp: 0.06, seed: 2 },
@@ -292,7 +324,7 @@ export function buildGolem(model: THREE.Group): Rig {
   body.userData.baseY = HIP;
   body.add(
     mesh(
-      rocky('golemBody', [
+      rocky(K + 'Body', [
         { g: box(1.05, 0.46, 0.82), c: ROCK_DARK, p: [0, 0.14, 0], warp: 0.06, seed: 4 },
         { g: ico(0.95), c: ROCK_DARK, c2: ROCK, s: [1.08, 0.95, 0.82], p: [0, 0.95, 0], warp: 0.1, seed: 5 },
         { g: ico(0.52), c: ROCK, s: [1.1, 0.95, 1.1], p: [0.98, 1.42, 0], warp: 0.07, seed: 6 },
@@ -308,7 +340,7 @@ export function buildGolem(model: THREE.Group): Rig {
     ),
     // inti dada, retakan, mata, dan kristal punggung yang menyala
     mesh(
-      cached('golemGlow', () =>
+      cached(K + 'Glow', () =>
         union([
           new THREE.OctahedronGeometry(0.24).scale(1, 1.3, 0.6).translate(0, 0.98, 0.76),
           box(0.05, 0.5, 0.05).rotateZ(0.7).translate(0.3, 1.2, 0.72),
@@ -326,16 +358,51 @@ export function buildGolem(model: THREE.Group): Rig {
     ),
   );
 
-  const upperGeo = rocky('golemArmU', [{ g: box(0.42, 0.72, 0.46), c: ROCK_DARK, p: [0, -0.4, 0], warp: 0.05, seed: 12 }], 0.3);
+  if (look.horns) {
+    body.add(
+      mesh(
+        rocky(
+          K + 'Horns',
+          [
+            // sepasang tanduk melengkung ke depan
+            { g: cone(0.17, 0.95, 6), c: ROCK_DARK, p: [0.34, 2.12, 0.1], r: [0.5, 0, -0.55], warp: 0.03, seed: 31 },
+            { g: cone(0.17, 0.95, 6), c: ROCK_DARK, p: [-0.34, 2.12, 0.1], r: [0.5, 0, 0.55], warp: 0.03, seed: 32 },
+            // pelat bahu bergerigi
+            { g: cone(0.3, 0.8, 5), c: ROCK, p: [1.18, 1.92, 0], r: [0, 0, -0.5], warp: 0.05, seed: 33 },
+            { g: cone(0.3, 0.8, 5), c: ROCK, p: [-1.18, 1.92, 0], r: [0, 0, 0.5], warp: 0.05, seed: 34 },
+            { g: cone(0.22, 0.6, 5), c: ROCK_DARK, p: [1.42, 1.62, -0.12], r: [0, 0, -0.95], warp: 0.04, seed: 35 },
+            { g: cone(0.22, 0.6, 5), c: ROCK_DARK, p: [-1.42, 1.62, -0.12], r: [0, 0, 0.95], warp: 0.04, seed: 36 },
+          ],
+          0.2,
+        ),
+        m,
+      ),
+      // mahkota kristal membara di punggung dan ujung tanduk
+      mesh(
+        cached(K + 'Crown', () =>
+          union([
+            new THREE.OctahedronGeometry(0.26).scale(1, 3.1, 1).rotateX(-0.35).translate(0, 2.2, -0.62),
+            new THREE.OctahedronGeometry(0.2).scale(1, 2.8, 1).rotateX(-0.45).rotateZ(0.35).translate(-0.52, 1.98, -0.6),
+            new THREE.OctahedronGeometry(0.2).scale(1, 2.8, 1).rotateX(-0.45).rotateZ(-0.35).translate(0.52, 1.98, -0.6),
+            new THREE.OctahedronGeometry(0.09).scale(1, 1.8, 1).translate(0.62, 2.5, 0.34),
+            new THREE.OctahedronGeometry(0.09).scale(1, 1.8, 1).translate(-0.62, 2.5, 0.34),
+          ]),
+        ),
+        glow,
+      ),
+    );
+  }
+
+  const upperGeo = rocky(K + 'ArmU', [{ g: box(0.42, 0.72, 0.46), c: ROCK_DARK, p: [0, -0.4, 0], warp: 0.05, seed: 12 }], 0.3);
   const lowerGeo = rocky(
-    'golemArmL',
+    K + 'ArmL',
     [
       { g: ico(0.42), c: ROCK, s: [1, 1.25, 1], p: [0, -0.34, 0], warp: 0.06, seed: 13 },
       { g: box(0.64, 0.5, 0.64), c: ROCK_DARK, c2: ROCK, p: [0, -0.86, 0.02], warp: 0.06, seed: 14 },
     ],
     0.3,
   );
-  const knuckles = cached('golemKnuckles', () => union([-0.2, 0, 0.2].map((x) => box(0.1, 0.07, 0.07).translate(x, -0.98, 0.35))));
+  const knuckles = cached(K + 'Knuckles', () => union([-0.2, 0, 0.2].map((x) => box(0.1, 0.07, 0.07).translate(x, -0.98, 0.35))));
   const arms: Arm[] = [-1, 1].map((s) => {
     const shoulder = joint(body, s * 1.02, 1.3, 0);
     shoulder.add(mesh(upperGeo, m));

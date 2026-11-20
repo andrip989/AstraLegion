@@ -93,6 +93,8 @@ export interface CampSpot {
   x: number;
   z: number;
   big: boolean;
+  /** Camp besar ini dihuni Golem Arus (Berkah Arus), bukan Golem Rimba (Berkah Golem). */
+  flow?: boolean;
 }
 export const CAMPS: CampSpot[] = [
   { x: 40, z: 32, big: false },
@@ -100,8 +102,20 @@ export const CAMPS: CampSpot[] = [
   { x: 49, z: 49, big: true },
   { x: 80, z: 88, big: false },
   { x: 88, z: 80, big: false },
-  { x: 71, z: 71, big: true },
+  { x: 71, z: 71, big: true, flow: true },
 ];
+
+/** Sarang Titan Astra: dua camp golem di sumbu tengah peta (jaraknya sama dari kedua base). */
+export interface TitanPit {
+  x: number;
+  z: number;
+  /** Indeks di CAMPS: golem di camp ini menyingkir selagi Titan ada. */
+  camp: number;
+  name: string;
+}
+export const TITAN_PITS: TitanPit[] = CAMPS.map((c, camp) => ({ x: c.x, z: c.z, camp, big: c.big }))
+  .filter((c) => c.big)
+  .map((c, i) => ({ x: c.x, z: c.z, camp: c.camp, name: i === 0 ? 'sarang atas' : 'sarang bawah' }));
 
 /**
  * Semak persembunyian. Hero yang berdiri di dalamnya tidak terlihat (dan tidak bisa dijadikan

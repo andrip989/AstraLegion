@@ -1,9 +1,9 @@
 // AI bot sederhana untuk mengisi slot hero kosong: ikut wave di lane-nya,
 // menyerang yang terdekat, memakai skill ke hero musuh, dan mundur saat sekarat.
-import { BOT_LEVELS, CORES, FOUNTAINS, ULT_UNLOCK_LEVEL, nextRecommended } from '../../../shared/src';
+import { BOT_LEVELS, BUSHES, CORES, FOUNTAINS, ITEMS, ITEM_ACTIVE, ULT_UNLOCK_LEVEL, nextRecommended } from '../../../shared/src';
 import type { Game } from './Game';
 import { Hero, Minion, Tower, type Unit } from './entities';
-import { castSkill, castSpell, orderAttack, orderMove } from './heroLogic';
+import { castSkill, castSpell, orderAttack, orderMove, useItem } from './heroLogic';
 
 export class Bot {
   private thinkAt = 0;
@@ -27,7 +27,21 @@ export class Bot {
       this.retreating = false;
       return;
     }
+    this.useItems(game);
     if (game.time < this.thinkAt) return;
+    // suar: bila siap, sesekali ditanam di semak terdekat (tempat lawan biasa menunggu)
+    if (h.wardCd <= 0 && Math.random() < 0.02) {
+      let best: { x: number; z: number } | null = null;
+      let bestD = 14;
+      for (const b of BUSHES) {
+        const d = Math.hypot(b.x - h.x, b.z - h.z);
+        if (d < bestD) {
+          bestD = d;
+          best = b;
+        }
+      }
+      if (best) game.placeWard(h, best.x, best.z);
+    }
     // tingkat kesulitan: seberapa cepat bot bereaksi, kapan ia mundur, dan seberapa rajin memakai skill
     const level = BOT_LEVELS[game.botLevel];
     this.thinkAt = game.time + level.think + Math.random() * 0.1;
@@ -54,6 +68,15 @@ export class Bot {
         orderAttack(game, h, foe.id);
         return;
       }
+    }
+
+    // Titan Astra: ikut menyerang bila kawan sudah bertarung dengannya atau tim sedang unggul jumlah
+    const titan = game.titan;
+    if (titan && game.titanRally(h.team)) {
+      const dist = Math.hypot(titan.x - h.x, titan.z - h.z);
+      if (dist < 12 && h.mana > h.maxMana * 0.35 && Math.random() < 0.35) this.castSlot(game, 0, titan, dist);
+      orderAttack(game, h, titan.id);
+      return;
     }
 
     // unit/bangunan musuh terdekat
@@ -83,6 +106,23 @@ export class Bot {
       dest = this.holdPoint(game);
     }
     if (Math.hypot(dest.x - h.x, dest.z - h.z) > 2.5) orderMove(game, h, dest.x, dest.z);
+  }
+
+  /** Pakai item aktif saat keadaannya cocok: perisai saat terdesak, pembersih saat terhambat, petir saat lawan menempel. */
+  private useItems(game: Game): void {
+    const h = this.hero;
+    for (let slot = 0; slot < h.items.length; slot++) {
+      const id = h.items[slot];
+      const active = ITEMS[id]?.active;
+      if (!active || (h.itemCd[id] ?? 0) > 0) continue;
+      if (active.kind === 'cleanse') {
+        if (h.stunUntil > game.time || h.slowUntil > game.time) useItem(game, h, slot);
+        continue;
+      }
+      const foe = game.nearestEnemy(h, active.kind === 'shock' ? ITEM_ACTIVE.shock.radius - 0.8 : 9, (u) => u instanceof Hero);
+      if (!foe) continue;
+      if (active.kind === 'shock' || h.hp / h.maxHp < 0.55) useItem(game, h, slot);
+    }
   }
 
   /** Tower kawan terluar di lane ini (atau core) sebagai tempat menunggu wave. */

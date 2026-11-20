@@ -1,7 +1,9 @@
-// Jendela modal: Pengaturan dan Profil. Dipakai dari lobby maupun saat bertanding.
-import { HEROES, type BoardRow } from '../../../shared/src';
+// Jendela modal: Pengaturan, Profil, Peringkat, dan Teman. Dipakai dari lobby maupun saat bertanding.
+import { FRIENDS_MAX, FRIEND_STATUS_TEXT, HEROES, RANK_HUMAN_BONUS, RANK_LOSS, RANK_WIN, rankTier, type BoardRow, type FriendStatus } from '../../../shared/src';
 import { accountLevel, accounts, type Account } from '../account/accounts';
+import type { FriendResult } from '../account/friends';
 import { achievementView, dailyView } from '../account/progress';
+import { tierBadge, tierBadgeFor } from '../account/rank';
 import { sound } from '../audio/Sound';
 import { GFX, QUALITIES, QUALITY_LABEL, setQuality, type Quality } from '../render/quality';
 import { settings, updateSettings, type Settings } from '../settings';
@@ -22,11 +24,18 @@ export function closeModal(): void {
   onClose = null;
 }
 
-function openModal(title: string, html: string, closed?: () => void): HTMLElement {
+/** `wide`: jendela lebih lebar, untuk isi berkolom banyak (papan peringkat). */
+function openModal(title: string, html: string, closed?: () => void, wide = false): HTMLElement {
+  // jendela yang sedang terbuka digantikan: beri tahu pemiliknya dulu
+  const previous = onClose;
+  onClose = null;
+  previous?.();
   const body = $('modal-body');
   $('modal-title').textContent = title;
   body.innerHTML = html;
+  $('modal').classList.toggle('wide', wide);
   $('modal').classList.remove('hidden');
+  body.scrollTop = 0; // jendela sebelumnya mungkin sudah digulir (baru berpengaruh setelah jendelanya tampil)
   onClose = closed ?? null;
   return body;
 }
@@ -84,6 +93,11 @@ export function openSettings(inGame: boolean, afterLogout: () => void, toLobby?:
      <h4>Tampilan</h4>
      ${toggle('shake', 'Guncangan kamera saat ledakan')}${toggle('showFps', 'Tampilkan FPS')}
      ${inGame && toLobby ? '<h4>Pertandingan</h4><div class="set-row"><span>Ganti hero, skin, mantra, atau room</span><button id="set-lobby">Kembali ke lobby</button></div>' : ''}
+     ${
+       inGame && acc && accounts.online && accounts.ranked
+         ? `<p class="hint">Meninggalkan pertandingan online sebelum selesai (kembali ke lobby, keluar akun, atau sambungan putus lebih dari 1 menit) dihitung kalah: &minus;${RANK_LOSS} poin peringkat, bila kamu sudah ikut bermain minimal 2 menit.</p>`
+         : ''
+     }
      <h4>Akun</h4>
      <div class="set-row"><span>${acc ? `Masuk sebagai <b>${esc(acc.name)}</b>` : 'Bermain sebagai tamu (statistik tidak disimpan)'}</span>
        <button id="set-logout">${acc ? 'Keluar' : 'Masuk / Daftar'}</button></div>
@@ -131,7 +145,34 @@ const fmtTime = (sec: number) => {
   return m >= 60 ? `${Math.floor(m / 60)} j ${m % 60} mnt` : `${m} mnt`;
 };
 
-/** Jendela profil: level akun, statistik, hero favorit, dan riwayat pertandingan. */
+/** Angka bertanda untuk perubahan poin peringkat: "+20", "−12", "±0". */
+const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `&minus;${-n}` : '&plusmn;0');
+
+/**
+ * Bagian tier peringkat di profil: lencana, poin, dan kemajuan ke tier berikutnya. Akun yang
+ * tidak punya tier (akun di perangkat, atau server versi lama) hanya mendapat keterangan,
+ * bukan tier tiruan.
+ */
+function rankSection(acc: Account): string {
+  if (accounts.kind !== 'server') return '<p class="rank-none">Akun di perangkat ini tidak punya tier peringkat. Tier hanya untuk akun online, dari pertandingan online.</p>';
+  if (!accounts.ranked) {
+    // server versi lama, atau (saat offline) salinan akun yang disimpan sebelum tier ada
+    return `<p class="rank-none">${accounts.online ? 'Server ini belum mendukung tier peringkat.' : 'Tier peringkat belum diketahui. Sambungkan ke server akun untuk melihatnya.'}</p>`;
+  }
+  const r = rankTier(acc.profile.rp);
+  const bar = r.next ? Math.round((r.into / r.span) * 100) : 100;
+  const next = r.next ? `${r.toNext} poin lagi menuju ${r.next.name}` : 'Tier tertinggi';
+  return (
+    `<div class="rank-card t-${r.tier.id}">${tierBadge(r.tier, false)}` +
+    `<div class="grow"><div class="rank-line"><b>${r.tier.name}</b><span>${acc.profile.rp} poin peringkat</span></div>` +
+    `<div class="xpbar"><div style="width:${bar}%"></div></div>` +
+    `<small>${next}${accounts.online ? '' : ' · data terakhir sebelum offline'}</small></div></div>` +
+    `<p class="hint">Menang pertandingan online: +${RANK_WIN.join(' / +')} poin (bot Mudah / Normal / Sulit), +${RANK_HUMAN_BONUS} bila tim lawan berisi pemain. ` +
+    `Kalah, atau keluar sebelum pertandingan selesai: &minus;${RANK_LOSS}.</p>`
+  );
+}
+
+/** Jendela profil: level akun, tier peringkat, statistik, hero favorit, dan riwayat pertandingan. */
 export function openProfile(acc: Account): void {
   const p = acc.profile;
   const lv = accountLevel(p.xp);
@@ -144,7 +185,8 @@ export function openProfile(acc: Account): void {
   const history = p.history
     .map(
       (m) =>
-        `<li class="${m.win ? 'win' : 'lose'}"><b>${m.win ? 'Menang' : 'Kalah'}</b><span>${esc(HEROES[m.hero]?.name ?? m.hero)}</span><span>${m.k} / ${m.d} / ${m.a}</span><span>${fmtTime(m.dur)}</span><span>+${m.xp} XP</span></li>`,
+        `<li class="${m.win ? 'win' : 'lose'}"><b>${m.left ? 'Keluar' : m.win ? 'Menang' : 'Kalah'}</b><span>${esc(HEROES[m.hero]?.name ?? m.hero)}</span><span>${m.k} / ${m.d} / ${m.a}</span><span>${fmtTime(m.dur)}</span><span>+${m.xp} XP</span>` +
+        `${m.rp === undefined ? '' : `<span class="rp ${m.rp < 0 ? 'down' : 'up'}" title="Poin peringkat">${signed(m.rp)}</span>`}</li>`,
     )
     .join('');
   const goal = (done: boolean, title: string, note: string, value: number, max: number) =>
@@ -163,6 +205,7 @@ export function openProfile(acc: Account): void {
          <div class="xpbar"><div style="width:${Math.round((lv.into / lv.need) * 100)}%"></div></div>
          <small>Level akun ${lv.level} · ${lv.into} / ${lv.need} XP</small></div>
      </div>
+     ${rankSection(acc)}
      <div class="stat-grid">
        <div><b>${p.matches}</b><span>Pertandingan</span></div>
        <div><b>${winRate}%</b><span>Menang</span></div>
@@ -185,13 +228,14 @@ export function openProfile(acc: Account): void {
 let boardTurn = 0;
 
 /**
- * Jendela papan peringkat: akun online teratas menurut XP akun (peringkat, nama, level, menang,
- * jumlah pertandingan), dengan baris pemain sendiri disorot. Datanya dari server, jadi saat
- * offline hanya ada keterangan.
+ * Jendela papan peringkat: akun online teratas menurut poin peringkat lalu XP akun (peringkat,
+ * nama, tier, poin, level, menang, jumlah pertandingan), dengan baris pemain sendiri disorot.
+ * Datanya dari server, jadi saat offline hanya ada keterangan. Server versi lama belum punya
+ * tier: papannya tampil seperti dulu (urut XP, tanpa kolom tier dan poin).
  */
 export async function openLeaderboard(): Promise<void> {
   const turn = ++boardTurn;
-  const body = openModal('Peringkat', '<p class="rank-note">Memuat papan peringkat…</p>');
+  const body = openModal('Peringkat', '<p class="rank-note">Memuat papan peringkat…</p>', undefined, true);
   const board = await accounts.leaderboard();
   // jendelanya sudah ditutup atau diganti selagi menunggu
   if (turn !== boardTurn || !isModalOpen() || $('modal-title').textContent !== 'Peringkat') return;
@@ -206,22 +250,198 @@ export async function openLeaderboard(): Promise<void> {
     return;
   }
   const me = board.me;
+  const ranked = board.ranked;
   const row = (b: BoardRow, mine: boolean) =>
     `<tr class="${mine ? 'me' : ''}"><td class="rk${b.rank <= 3 ? ` top${b.rank}` : ''}">${b.rank}</td><td class="nm">${esc(b.name)}${mine ? '<small>kamu</small>' : ''}</td>` +
-    `<td><span class="lv">${b.level}</span></td><td>${b.wins}</td><td>${b.matches}</td></tr>`;
+    (ranked ? `<td class="tr">${tierBadgeFor(b.rp)}</td><td class="pt">${b.rp}</td>` : '') +
+    `<td class="xl"><span class="lv">${b.level}</span></td><td>${b.wins}</td><td class="xl">${b.matches}</td></tr>`;
   const isMe = (b: BoardRow) => !!me && b.rank === me.rank && b.name === me.name;
   const rows = board.top.map((b) => row(b, isMe(b))).join('');
   // pemain di luar daftar teratas tetap melihat barisnya sendiri di bawah
-  const own = me && !board.top.some(isMe) ? `<tr class="gap"><td colspan="5">&#8943;</td></tr>${row(me, true)}` : '';
+  const own = me && !board.top.some(isMe) ? `<tr class="gap"><td colspan="${ranked ? 7 : 5}">&#8943;</td></tr>${row(me, true)}` : '';
   // peringkat sendiri di atas tabel, supaya terlihat tanpa menggulir
   const note = me
-    ? `Peringkatmu <b>${me.rank}</b> dari ${board.total} pemain`
+    ? `Peringkatmu <b>${me.rank}</b> dari ${board.total} pemain${ranked ? ` · ${tierBadgeFor(me.rp)} ${me.rp} poin` : ''}`
     : accounts.current()
-      ? 'Akun yang sedang dipakai hanya ada di perangkat ini, jadi tidak ikut papan peringkat.'
+      ? 'Akun yang sedang dipakai hanya ada di perangkat ini, jadi tidak ikut papan peringkat dan tidak punya tier.'
       : 'Masuk atau daftar akun online supaya namamu ikut di papan peringkat.';
+  const head = `<th class="rk">#</th><th class="nm">Nama</th>${ranked ? '<th class="tr">Tier</th><th>Poin</th>' : ''}<th class="xl">Level</th><th>Menang</th><th class="xl">Main</th>`;
   body.innerHTML = board.top.length
     ? `<p class="rank-me">${note}</p>
-       <table class="rank-table"><thead><tr><th class="rk">#</th><th class="nm">Nama</th><th>Level</th><th>Menang</th><th>Main</th></tr></thead><tbody>${rows}${own}</tbody></table>
-       <p class="hint">Urutan menurut XP akun. Hanya pertandingan online yang dihitung.</p>`
+       <table class="rank-table${ranked ? ' tiered' : ''}"><thead><tr>${head}</tr></thead><tbody>${rows}${own}</tbody></table>
+       <p class="hint">${ranked ? 'Urutan menurut poin peringkat, lalu XP akun.' : 'Urutan menurut XP akun.'} Hanya pertandingan online yang dihitung.</p>`
     : `<p class="rank-note">Belum ada pemain di papan peringkat.<br />${note}</p>`;
+}
+
+// ------------------------------------------------------------------- teman
+
+/** Alasan daftar teman tidak tersedia untuk pemain ini sekarang. */
+function friendsUnavailable(): string {
+  if (!accounts.online) return 'Daftar teman hanya tersedia saat tersambung ke server akun.';
+  if (!accounts.current()) return 'Daftar teman hanya untuk akun online.<br />Masuk atau daftar dulu, lalu tambahkan temanmu lewat nama akunnya.';
+  return 'Server ini belum mendukung daftar teman.';
+}
+
+const STATUS_ORDER: Record<FriendStatus, number> = { lobby: 0, playing: 1, offline: 2 };
+
+/**
+ * Jendela daftar teman: tambah lewat nama akun, permintaan masuk (Terima / Tolak), teman dengan
+ * tier dan statusnya (Undang / Hapus), dan permintaan terkirim (Batalkan). Isinya mengikuti
+ * kabar dari server selama jendela terbuka. `room` memberi kode room pribadi untuk undangan
+ * (dibuatkan lobby bila pemain belum mengisinya).
+ *
+ * Semua nama berasal dari server dan sudah disaring (hanya huruf, angka, spasi, garis bawah);
+ * tetap saja semuanya dilewatkan `esc` sebelum masuk HTML, dan pesan ditulis lewat textContent.
+ */
+export function openFriends(room: () => string): void {
+  const friends = accounts.friends;
+  if (!friends.available) {
+    openModal('Teman', `<p class="rank-note">${friendsUnavailable()}</p>`);
+    return;
+  }
+  let stop = () => {};
+  const body = openModal(
+    'Teman',
+    `<form class="fr-add" id="fr-add"><input id="fr-name" maxlength="16" placeholder="Nama akun pemain" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" /><button type="submit">Tambah</button></form>
+     <p class="fr-msg" id="fr-msg" role="status"></p>
+     <div id="fr-lists"></div>`,
+    () => stop(),
+  );
+  const lists = body.querySelector<HTMLElement>('#fr-lists')!;
+  const msg = body.querySelector<HTMLElement>('#fr-msg')!;
+  const input = body.querySelector<HTMLInputElement>('#fr-name')!;
+  /** Teman yang sedang ditanyakan "yakin hapus?". */
+  let confirming = '';
+  let busy = false;
+
+  const say = (text: string, bad = false) => {
+    msg.textContent = text;
+    msg.classList.toggle('bad', bad);
+  };
+  const button = (act: string, name: string, label: string, cls = '', disabled = false) =>
+    `<button type="button" data-act="${act}" data-name="${esc(name)}"${cls ? ` class="${cls}"` : ''}${disabled ? ' disabled' : ''}>${label}</button>`;
+
+  const draw = () => {
+    if (!friends.loaded) {
+      lists.innerHTML = '<p class="fr-empty">Memuat daftar teman…</p>';
+      return;
+    }
+    const { incoming, outgoing } = friends.list;
+    const list = [...friends.list.friends].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name));
+    let html = '';
+    if (incoming.length) {
+      html += `<h4>Permintaan masuk · ${incoming.length}</h4><ul class="fr-list">`;
+      for (const r of incoming) {
+        html += `<li><span class="fr-who"><b>${esc(r.name)}</b>${tierBadgeFor(r.rp)}</span><span class="fr-acts">${button('accept', r.name, 'Terima', 'go')}${button('decline', r.name, 'Tolak')}</span></li>`;
+      }
+      html += '</ul>';
+    }
+    html += `<h4>Teman · ${list.length} / ${FRIENDS_MAX}</h4>`;
+    if (list.length) {
+      html += '<ul class="fr-list">';
+      for (const f of list) {
+        const acts =
+          confirming === f.name
+            ? `<span class="fr-ask">Hapus dari daftar teman?</span>${button('remove', f.name, 'Ya, hapus', 'bad')}${button('keep', f.name, 'Batal')}`
+            : `${button('invite', f.name, 'Undang', 'go', f.status !== 'lobby')}${button('ask', f.name, 'Hapus')}`;
+        html +=
+          `<li class="${f.status}"><span class="fr-who"><i class="fr-dot"></i><b>${esc(f.name)}</b>${tierBadgeFor(f.rp)}<small>${FRIEND_STATUS_TEXT[f.status]}</small></span>` +
+          `<span class="fr-acts">${acts}</span></li>`;
+      }
+      html += '</ul>';
+    } else {
+      html += '<p class="fr-empty">Belum ada teman. Ketik nama akun temanmu di atas untuk mengirim permintaan.</p>';
+    }
+    if (outgoing.length) {
+      html += `<h4>Permintaan terkirim · ${outgoing.length}</h4><ul class="fr-list">`;
+      for (const name of outgoing) html += `<li><span class="fr-who"><b>${esc(name)}</b><small>Menunggu jawaban</small></span><span class="fr-acts">${button('cancel', name, 'Batalkan')}</span></li>`;
+      html += '</ul>';
+    }
+    lists.innerHTML = html;
+  };
+
+  /** Jalankan satu permintaan ke server; selama menunggu, ketukan lain diabaikan. */
+  const run = async (action: () => Promise<FriendResult>, done: (r: FriendResult & { ok: true }) => string) => {
+    if (busy) return;
+    busy = true;
+    const r = await action();
+    busy = false;
+    if (!isModalOpen() || !lists.isConnected) return; // jendelanya sudah ditutup atau diganti
+    if (r.ok) say(done(r));
+    else {
+      say(r.error, true);
+      sound.play('error');
+    }
+    draw();
+  };
+
+  body.querySelector<HTMLFormElement>('#fr-add')!.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) return;
+    void run(
+      () => friends.add(name),
+      (r) => {
+        input.value = '';
+        // jawaban yang sama entah nama itu terdaftar atau tidak
+        return r.info === 'friends' ? `Kamu dan ${name} sekarang berteman.` : 'Permintaan terkirim bila nama itu ada.';
+      },
+    );
+  });
+
+  lists.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
+    const name = btn?.dataset.name;
+    if (!btn || !name || btn.disabled) return;
+    sound.play('click');
+    switch (btn.dataset.act) {
+      case 'accept':
+        void run(
+          () => friends.accept(name),
+          () => `Kamu dan ${name} sekarang berteman.`,
+        );
+        break;
+      case 'decline':
+        void run(
+          () => friends.decline(name),
+          () => 'Permintaan ditolak.',
+        );
+        break;
+      case 'cancel':
+        void run(
+          () => friends.cancel(name),
+          () => 'Permintaan dibatalkan.',
+        );
+        break;
+      case 'ask':
+        confirming = name;
+        draw();
+        break;
+      case 'keep':
+        confirming = '';
+        draw();
+        break;
+      case 'remove':
+        confirming = '';
+        void run(
+          () => friends.remove(name),
+          () => `${name} dihapus dari daftar teman.`,
+        );
+        break;
+      case 'invite': {
+        const code = room();
+        void run(
+          () => friends.invite(name, code),
+          () => `Undangan terkirim ke ${name}. Room ${code}: tekan MAIN untuk masuk lebih dulu.`,
+        );
+        break;
+      }
+    }
+  });
+
+  stop = friends.subscribe(draw);
+  draw();
+  // satu permintaan tiap kali jendela dibuka, untuk berjaga-jaga bila ada kabar yang terlewat
+  // (mis. selagi sambungan sempat putus); setelah itu perubahan datang sendiri dari server
+  void friends.refresh();
 }

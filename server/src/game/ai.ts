@@ -1,4 +1,5 @@
 // Perilaku unit non-hero: minion, tower, monster jungle.
+import { TITAN_ARENA, TITAN_LEASH, TITAN_SLAM_EVERY } from '../../../shared/src';
 import type { Game } from './Game';
 import { Hero, Minion, type Monster, type Tower, type Unit } from './entities';
 
@@ -92,6 +93,51 @@ export function updateMonster(game: Game, m: Monster, dt: number): void {
   // pulang ke camp dan pulihkan HP
   if (homeDist > 0.4) moveToward(game, m, m.homeX, m.homeZ, dt);
   if (m.hp < m.maxHp) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.15 * dt);
+}
+
+/**
+ * Titan Astra. Diam di sarangnya sampai dilukai hero; setelah itu menyerang hero terdekat di
+ * arenanya (dari tim mana pun), sesekali menghantam tanah di sekelilingnya, dan pulang sambil
+ * memulihkan diri bila semua penyerangnya pergi.
+ */
+export function updateTitan(game: Game, m: Monster, dt: number): void {
+  m.attackCd = Math.max(0, m.attackCd - dt);
+  if (game.isStunned(m) || game.time < m.windupUntil) return;
+  const fromHome = (u: Unit) => Math.hypot(u.x - m.homeX, u.z - m.homeZ);
+  const valid = (u: Unit | undefined): u is Hero => u instanceof Hero && game.canTarget(m, u) && fromHome(u) <= TITAN_ARENA;
+  const fighting = m.combatUntil > game.time;
+  let target = m.aggroId ? game.byId.get(m.aggroId) : undefined;
+  if (!valid(target)) target = undefined;
+  if (!target && fighting) {
+    // sasaran lama pergi atau tumbang: pindah ke hero terdekat yang masih di arena
+    let best = Infinity;
+    for (const h of game.heroes) {
+      if (!valid(h)) continue;
+      const d = Math.hypot(h.x - m.x, h.z - m.z);
+      if (d < best) {
+        best = d;
+        target = h;
+      }
+    }
+  }
+  m.aggroId = target ? target.id : 0;
+  if (target && fighting) {
+    if (game.time >= m.slamAt) {
+      m.slamAt = game.time + TITAN_SLAM_EVERY;
+      game.titanSlam(m);
+      return;
+    }
+    if (edgeDist(m, target) <= m.attackRange) {
+      if (m.attackCd <= 0) game.basicAttack(m, target);
+    } else if (fromHome(m) < TITAN_LEASH || fromHome(target) < fromHome(m)) {
+      moveToward(game, m, target.x, target.z, dt); // tidak mengejar keluar dari jangkauan sarangnya
+    }
+    return;
+  }
+  // tidak ada lawan: pulang dan pulih
+  m.combatUntil = 0;
+  if (fromHome(m) > 0.4) moveToward(game, m, m.homeX, m.homeZ, dt);
+  if (m.hp < m.maxHp) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.07 * dt);
 }
 
 /** Dorong minion yang saling tumpang-tindih supaya tidak menumpuk di satu titik. */

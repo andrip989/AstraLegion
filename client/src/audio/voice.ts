@@ -21,7 +21,9 @@ export type VoiceLine =
   | 'tower'
   | 'begin'
   | 'victory'
-  | 'defeat';
+  | 'defeat'
+  | 'titan'
+  | 'titan_slain';
 
 const loaders = import.meta.glob<string>('./voice/*.ts', { import: 'default' });
 const cache = new Map<string, Promise<AudioBuffer | null>>();

@@ -1,10 +1,11 @@
 // Pintu masuk model: memilih pembangun model menurut jenis entity (hero, minion, tower, core, monster).
+import { newRig } from './rig';
 import * as THREE from 'three';
 import { SKINS, type EntityStatic, type SkinDef } from '../../../shared/src';
 import { buildCore, buildTower } from './buildings';
-import { buildGolem, buildLizard, buildMinion } from './creatures';
+import { buildGolem, buildLizard, buildMinion, FLOW_LOOK, siegeLook, TITAN_LOOK } from './creatures';
 import { FALLBACK_HERO, HERO_MODELS } from './heroModels';
-import { glowColor, TEAM_COLOR } from './palette';
+import { glowColor, TEAM_COLOR, glowMat, unitMat } from './palette';
 import type { Rig } from './rig';
 
 export { TEAM_COLOR };
@@ -89,10 +90,25 @@ export function buildModel(st: EntityStatic): Built {
     case 'hero':
       return buildHero(st.sub, st.skin ?? 0);
     case 'minion':
+      if (st.sub === 'siege') {
+        // Raksasa Astra: golem pengepung berwarna tim
+        const rig = buildGolem(model, siegeLook(st.team));
+        model.scale.setScalar(1.25);
+        model.userData.baseScale = 1.25;
+        return { model, height: 3.4 * 1.25, mats: [], rig };
+      }
+      if (st.sub === 'dummy') {
+        // boneka sasaran (mode latihan)
+        const rig = buildMinion(model, st.team, false);
+        model.scale.setScalar(1.7);
+        model.userData.baseScale = 1.7;
+        return { model, height: 1.75 * 1.7, mats: [], rig };
+      }
       if (st.sub === 'super') {
         // minion super: model minion biasa yang diperbesar
         const rig = buildMinion(model, st.team, false);
         model.scale.setScalar(1.55);
+        model.userData.baseScale = 1.55;
         return { model, height: 1.75 * 1.55, mats: [], rig };
       }
       return { model, height: 1.75, mats: [], rig: buildMinion(model, st.team, st.sub === 'ranged') };
@@ -100,7 +116,25 @@ export function buildModel(st: EntityStatic): Built {
       return { model, height: 8.3, mats: [], rig: buildTower(model, st.team) };
     case 'core':
       return { model, height: 7.2, mats: [], rig: buildCore(model, st.team) };
+    case 'ward': {
+      // suar penglihatan: tonggak batu kecil dengan bola cahaya warna tim yang melayang di atasnya
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.1, 6), unitMat());
+      pole.position.y = 0.55;
+      pole.castShadow = true;
+      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), glowMat(TEAM_COLOR[st.team] ?? 0xffffff, 1.8));
+      orb.position.y = 1.45;
+      orb.userData.baseY = 1.45;
+      model.add(pole, orb);
+      return { model, height: 1.3, mats: [], rig: newRig({ bob: [orb], spin: [orb] }) };
+    }
     case 'monster':
+      if (st.sub === 'titan') {
+        const rig = buildGolem(model, TITAN_LOOK);
+        model.scale.setScalar(1.9);
+        model.userData.baseScale = 1.9;
+        return { model, height: 3.9 * 1.9, mats: [], rig };
+      }
+      if (st.sub === 'flow') return { model, height: 3.4, mats: [], rig: buildGolem(model, FLOW_LOOK) };
       return st.sub === 'big' ? { model, height: 3.4, mats: [], rig: buildGolem(model) } : { model, height: 2.1, mats: [], rig: buildLizard(model) };
   }
 }

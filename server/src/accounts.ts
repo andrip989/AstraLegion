@@ -1,10 +1,12 @@
 // Akun pemain di server: penyimpanan (satu file JSON), kata sandi (scrypt bergaram), token sesi,
-// pembatas laju, papan peringkat, dan event Socket.IO "acc:*" (protokolnya di shared/src/account.ts).
+// pembatas laju, papan peringkat, daftar teman, dan event Socket.IO "acc:*" dan "fr:*"
+// (protokolnya di shared/src/account.ts dan shared/src/friends.ts).
 //
 // Yang disimpan per akun hanya: nama, hash kata sandi, hash token sesi (dengan waktu terakhir
-// dipakai, untuk membuang sesi lama), dan statistik permainan. Alamat IP hanya dipakai di memori
-// untuk membatasi percobaan masuk; tidak ditulis ke file maupun ke log. Kata sandi dan token
-// tidak pernah dicatat di log atau dikirim balik.
+// dipakai, untuk membuang sesi lama), statistik permainan, dan daftar teman beserta permintaan
+// pertemanannya (berupa nama akun). Alamat IP hanya dipakai di memori untuk membatasi percobaan
+// masuk; tidak ditulis ke file maupun ke log. Kata sandi dan token tidak pernah dicatat di log
+// atau dikirim balik. Kehadiran teman (offline / di lobby / sedang bermain) hanya ada di memori.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +14,8 @@ import type { Socket } from 'socket.io';
 import {
   ACC_PROTOCOL,
   BOARD_SIZE,
+  FRIENDS_MAX,
+  FRIEND_REQUESTS_MAX,
   PASSWORD_MAX,
   accountLevel,
   applyMatch,
@@ -19,6 +23,7 @@ import {
   emptyProfile,
   gameDay,
   nameKey,
+  roomCode,
   validateName,
   validatePassword,
   type AccBoard,
@@ -28,8 +33,14 @@ import {
   type AccSignedIn,
   type Account,
   type BoardRow,
+  type FrInvite,
+  type FrPresence,
+  type FrReply,
+  type FriendList,
+  type FriendStatus,
   type MatchResult,
   type Profile,
+  type RankContext,
 } from '../../shared/src';
 
 // ------------------------------------------------------------------- batasan
@@ -71,10 +82,24 @@ interface StoredAccount {
   pw: PwHash;
   tokens: StoredToken[];
   profile: Profile;
+  /** Kunci akun teman. Pertemanan selalu dua arah: tiap pihak mencantumkan pihak satunya. */
+  friends: string[];
+  /**
+   * Permintaan pertemanan yang dikirim akun ini: nama persis seperti diketik. Akun bernama itu
+   * belum tentu ada, dan permintaannya belum tentu sampai (lihat friendAdd).
+   */
+  reqOut: string[];
+  /** Kunci akun yang permintaannya sampai ke akun ini dan belum dijawab. */
+  reqIn: string[];
 }
+
+/** Hasil mengubah daftar teman: akun lain yang daftarnya ikut berubah (untuk dikabari). */
+type FriendChange = { ok: true; touched: string[]; info?: FrReply['info'] } | AccFail;
 
 const fail = (error: string, code?: AccFail['code'], retry?: number): AccFail => ({ ok: false, error, ...(code ? { code } : {}), ...(retry ? { retry } : {}) });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** Daftar teks pendek dari isi file data (entri lain dibuang). */
+const textList = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 64).slice(0, max) : []);
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const isHex = (v: unknown, bytes: number): v is string => typeof v === 'string' && v.length === bytes * 2 && /^[0-9a-f]+$/.test(v);
 
@@ -211,12 +236,50 @@ export class AccountDb {
         pw: { algo: 'scrypt', n: pw.n as number, r: pw.r as number, p: pw.p as number, salt: pw.salt as string, hash: pw.hash as string },
         tokens,
         profile: cleanProfile(raw.profile),
+        // file lama belum punya daftar teman: mulai kosong
+        friends: textList(raw.friends, FRIENDS_MAX),
+        reqOut: textList(raw.reqOut, FRIEND_REQUESTS_MAX),
+        reqIn: textList(raw.reqIn, FRIEND_REQUESTS_MAX),
       };
       this.byKey.set(key, account);
       for (const t of tokens) this.byToken.set(t.h, key);
     }
+    this.mendFriends();
     this.board = null;
     return skipped;
+  }
+
+  /**
+   * Rapikan daftar teman setelah semua akun dimuat, supaya isi file yang diedit tangan tidak
+   * menghasilkan hubungan yang timpang: teman harus saling mencantumkan dan akunnya harus ada;
+   * permintaan masuk harus punya pasangannya di daftar terkirim si pengirim.
+   */
+  private mendFriends(): void {
+    for (const [key, a] of this.byKey) {
+      const seen = new Set([key]);
+      a.friends = a.friends.filter((k) => {
+        if (seen.has(k) || !this.byKey.get(k)?.friends.includes(key)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    for (const [key, a] of this.byKey) {
+      const seen = new Set([key, ...a.friends]);
+      a.reqOut = a.reqOut.filter((name) => {
+        const k = nameKey(name);
+        if (validateName(name) || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    for (const [key, a] of this.byKey) {
+      const seen = new Set([key, ...a.friends]);
+      a.reqIn = a.reqIn.filter((k) => {
+        if (seen.has(k) || !this.byKey.get(k)?.reqOut.some((name) => nameKey(name) === key)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
   }
 
   private serialise(): string {
@@ -331,6 +394,9 @@ export class AccountDb {
         pw: { algo: 'scrypt', ...SCRYPT, salt: salt.toString('hex'), hash: hash.toString('hex') },
         tokens: [],
         profile: emptyProfile(),
+        friends: [],
+        reqOut: [],
+        reqIn: [],
       };
       this.byKey.set(key, a);
       const token = this.issueToken(key, a);
@@ -399,39 +465,160 @@ export class AccountDb {
   // ---- hasil pertandingan & papan peringkat
 
   /**
-   * Catat satu pertandingan ke akun `key`. Hanya dipanggil server sendiri dari data simulasinya
-   * (lihat index.ts): tidak ada event jaringan yang sampai ke sini.
+   * Catat satu pertandingan ke akun `key`, termasuk perubahan poin peringkatnya (`rank`: keadaan
+   * room yang menentukan besarnya). Hanya dipanggil server sendiri dari data simulasinya (lihat
+   * index.ts): tidak ada event jaringan yang sampai ke sini.
    */
-  recordMatch(key: string, rec: MatchResult): AccMatch | null {
+  recordMatch(key: string, rec: MatchResult, rank: RankContext): AccMatch | null {
     const a = this.byKey.get(key);
     if (!a) return null;
     const now = Date.now();
-    const r = applyMatch(a.profile, rec, now, gameDay(now));
+    const r = applyMatch(a.profile, rec, now, gameDay(now), rank);
     this.board = null;
     this.touch();
-    return { account: this.publicOf(a), xp: r.xp, missions: r.missions.map((m) => m.id), unlocked: r.unlocked.map((u) => u.id) };
+    return { account: this.publicOf(a), xp: r.xp, missions: r.missions.map((m) => m.id), unlocked: r.unlocked.map((u) => u.id), rp: r.rp };
   }
 
   private ranking(): { rows: BoardRow[]; rank: Map<string, number> } {
     if (!this.board) {
       const list = [...this.byKey.entries()].sort(
-        ([, a], [, b]) => b.profile.xp - a.profile.xp || b.profile.wins - a.profile.wins || a.created - b.created || (a.name < b.name ? -1 : 1),
+        ([, a], [, b]) =>
+          b.profile.rp - a.profile.rp || b.profile.xp - a.profile.xp || b.profile.wins - a.profile.wins || a.created - b.created || (a.name < b.name ? -1 : 1),
       );
       const rank = new Map<string, number>();
       const rows = list.map(([key, a], i): BoardRow => {
         rank.set(key, i + 1);
-        return { rank: i + 1, name: a.name, level: accountLevel(a.profile.xp).level, xp: a.profile.xp, wins: a.profile.wins, matches: a.profile.matches };
+        return { rank: i + 1, name: a.name, rp: a.profile.rp, level: accountLevel(a.profile.xp).level, xp: a.profile.xp, wins: a.profile.wins, matches: a.profile.matches };
       });
       this.board = { rows, rank };
     }
     return this.board;
   }
 
-  /** Peringkat teratas menurut XP akun, ditambah baris akun `key` sendiri bila ada. */
+  /** Peringkat teratas menurut poin peringkat lalu XP akun, ditambah baris akun `key` sendiri bila ada. */
   leaderboard(key: string | null): AccBoard {
     const b = this.ranking();
     const mine = key ? b.rank.get(key) : undefined;
     return { ok: true, top: b.rows.slice(0, BOARD_SIZE), me: mine ? b.rows[mine - 1] : null, total: b.rows.length };
+  }
+
+  // ---- daftar teman
+  //
+  // Semua fungsi di bawah menerima kunci akun pemanggil (sudah masuk akun) dan nama akun sasaran
+  // dari client. Tidak satu pun membedakan, lewat jawabannya, nama yang terdaftar dari yang tidak,
+  // kecuali pemanggil memang sudah berhubungan dengan akun itu (teman, atau permintaan masuk).
+
+  areFriends(a: string, b: string): boolean {
+    return this.byKey.get(a)?.friends.includes(b) ?? false;
+  }
+
+  friendKeys(key: string): readonly string[] {
+    return this.byKey.get(key)?.friends ?? [];
+  }
+
+  /** Daftar teman akun `key`; `status` memberi kehadiran tiap teman. */
+  friendList(key: string, status: (key: string) => FriendStatus): FriendList {
+    const a = this.byKey.get(key);
+    const out: FriendList = { friends: [], incoming: [], outgoing: [] };
+    if (!a) return out;
+    for (const k of a.friends) {
+      const f = this.byKey.get(k);
+      if (f) out.friends.push({ name: f.name, rp: f.profile.rp, status: status(k) });
+    }
+    for (const k of a.reqIn) {
+      const f = this.byKey.get(k);
+      if (f) out.incoming.push({ name: f.name, rp: f.profile.rp });
+    }
+    out.outgoing = [...a.reqOut];
+    return out;
+  }
+
+  private befriend(key: string, a: StoredAccount, otherKey: string, other: StoredAccount): FriendChange {
+    if (a.friends.length >= FRIENDS_MAX) return fail(`Daftar temanmu sudah penuh (${FRIENDS_MAX}). Hapus salah satu dulu.`);
+    if (other.friends.length >= FRIENDS_MAX) return fail(`Daftar teman ${other.name} sudah penuh.`);
+    // permintaan di antara keduanya, dari arah mana pun, selesai
+    a.reqIn = a.reqIn.filter((k) => k !== otherKey);
+    other.reqIn = other.reqIn.filter((k) => k !== key);
+    a.reqOut = a.reqOut.filter((n) => nameKey(n) !== otherKey);
+    other.reqOut = other.reqOut.filter((n) => nameKey(n) !== key);
+    a.friends.push(otherKey);
+    other.friends.push(key);
+    this.touch();
+    return { ok: true, touched: [otherKey], info: 'friends' };
+  }
+
+  /**
+   * Kirim permintaan pertemanan dari `key` ke akun bernama `name` (sudah lolos validateName).
+   * Namanya selalu masuk ke daftar terkirim, baik akunnya ada maupun tidak, dan jawabannya sama.
+   * Permintaan baru benar-benar sampai bila akunnya ada, kotak masuknya belum penuh, dan
+   * `deliver` mengizinkan (pembatas laju per pasangan); yang tidak sampai tetap tampak menunggu.
+   */
+  friendAdd(key: string, name: string, deliver: (to: string) => boolean): FriendChange {
+    const a = this.byKey.get(key);
+    if (!a) return fail('Akun tidak ditemukan.');
+    const to = nameKey(name);
+    if (to === key) return fail('Itu namamu sendiri.');
+    if (a.friends.includes(to)) return fail('Pemain itu sudah ada di daftar temanmu.');
+    const other = this.byKey.get(to);
+    // orang itu sudah lebih dulu meminta: langsung berteman
+    if (other && a.reqIn.includes(to)) return this.befriend(key, a, to, other);
+    if (a.reqOut.some((n) => nameKey(n) === to)) return fail('Permintaan ke nama itu masih menunggu jawaban.');
+    if (a.friends.length >= FRIENDS_MAX) return fail(`Daftar temanmu sudah penuh (${FRIENDS_MAX}). Hapus salah satu dulu.`);
+    if (a.reqOut.length >= FRIEND_REQUESTS_MAX) return fail(`Permintaan terkirim sudah ${FRIEND_REQUESTS_MAX}. Batalkan salah satu dulu.`);
+    a.reqOut.push(name);
+    this.touch();
+    if (other && other.reqIn.length < FRIEND_REQUESTS_MAX && !other.reqIn.includes(key) && deliver(to)) {
+      other.reqIn.push(key);
+      return { ok: true, touched: [to], info: 'sent' };
+    }
+    return { ok: true, touched: [], info: 'sent' };
+  }
+
+  /** Terima permintaan masuk dari akun bernama `name`. */
+  friendAccept(key: string, name: string): FriendChange {
+    const a = this.byKey.get(key);
+    const from = nameKey(name);
+    const other = this.byKey.get(from);
+    if (!a || !other || !a.reqIn.includes(from)) return fail('Permintaan itu sudah tidak ada.');
+    return this.befriend(key, a, from, other);
+  }
+
+  /**
+   * Tolak permintaan masuk. Pengirimnya tidak dikabari dan permintaannya tetap tampak menunggu
+   * di sisinya, jadi penolakan tidak bisa dipakai untuk mengetahui nama mana yang terdaftar.
+   */
+  friendDecline(key: string, name: string): FriendChange {
+    const a = this.byKey.get(key);
+    const from = nameKey(name);
+    if (!a || !a.reqIn.includes(from)) return fail('Permintaan itu sudah tidak ada.');
+    a.reqIn = a.reqIn.filter((k) => k !== from);
+    this.touch();
+    return { ok: true, touched: [] };
+  }
+
+  /** Batalkan permintaan yang dikirim ke `name`. */
+  friendCancel(key: string, name: string): FriendChange {
+    const a = this.byKey.get(key);
+    const to = nameKey(name);
+    if (!a || !a.reqOut.some((n) => nameKey(n) === to)) return fail('Permintaan itu sudah tidak ada.');
+    a.reqOut = a.reqOut.filter((n) => nameKey(n) !== to);
+    this.touch();
+    const other = this.byKey.get(to);
+    if (!other?.reqIn.includes(key)) return { ok: true, touched: [] };
+    other.reqIn = other.reqIn.filter((k) => k !== key);
+    return { ok: true, touched: [to] };
+  }
+
+  /** Hapus pertemanan dengan `name`; berlaku untuk kedua pihak. */
+  friendRemove(key: string, name: string): FriendChange {
+    const a = this.byKey.get(key);
+    const to = nameKey(name);
+    if (!a || !a.friends.includes(to)) return fail('Pemain itu tidak ada di daftar temanmu.');
+    a.friends = a.friends.filter((k) => k !== to);
+    const other = this.byKey.get(to);
+    if (other) other.friends = other.friends.filter((k) => k !== key);
+    this.touch();
+    return { ok: true, touched: other ? [to] : [] };
   }
 }
 
@@ -492,7 +679,14 @@ const registerGlobal = new Limiter(120, 60 * 60_000);
 /** Gagal masuk per nama akun, dari alamat mana pun (menebak sandi dari banyak alamat sekaligus). */
 const failByName = new Limiter(8, 15 * 60_000);
 
-/** Percobaan masuk/daftar per socket per menit, dan semua event akun per socket per 10 detik. */
+/** Permintaan pertemanan per akun (menebak-nebak nama akun lewat permintaan pertemanan jadi lambat). */
+const friendAdds = new Limiter(10, 10 * 60_000);
+/** Permintaan yang benar-benar diantar dari satu akun ke akun yang sama (batal lalu kirim lagi berulang-ulang). */
+const friendPair = new Limiter(2, 60 * 60_000);
+/** Undangan ke room dari satu akun ke teman yang sama. */
+const invitePair = new Limiter(1, 10_000);
+
+/** Percobaan masuk/daftar per socket per menit, dan semua event akun dan teman per socket per 10 detik. */
 const SOCKET_AUTH_MAX = 6;
 const SOCKET_EVENT_MAX = 30;
 
@@ -546,6 +740,95 @@ export function clientIp(socket: Socket): string {
   return ip || 'tak-dikenal';
 }
 
+// ------------------------------------------------------- kehadiran & teman
+
+/** Jeda sebelum perubahan status dikabarkan ke teman; beberapa perubahan beruntun jadi satu kabar. */
+const PRESENCE_DELAY = 400;
+/**
+ * "Offline" dikabarkan lebih lambat: memuat ulang halaman (mis. kembali dari pertandingan ke
+ * lobby) memutus sambungan sebentar, dan itu tidak perlu tampak sebagai offline lalu online lagi.
+ */
+const PRESENCE_OFFLINE_DELAY = 5000;
+
+/**
+ * Siapa yang sedang tersambung, dan kabar ke teman-temannya. Server tidak pernah menanyai
+ * client: status dihitung dari socket yang masuk akun dan dari kursi pertandingan (`playing`),
+ * lalu didorong ke teman yang sedang tersambung hanya saat nilainya berubah.
+ */
+export class Social {
+  /** Socket yang sedang masuk ke tiap akun. */
+  private sockets = new Map<string, Set<Socket>>();
+  /** Status yang terakhir dikabarkan ke teman (tanpa entri = offline). */
+  private shown = new Map<string, FriendStatus>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  constructor(
+    private db: AccountDb,
+    /** true bila akun itu sedang menduduki kursi di sebuah pertandingan (lihat index.ts). */
+    private playing: (key: string) => boolean,
+  ) {}
+
+  enter(key: string, socket: Socket): void {
+    let set = this.sockets.get(key);
+    if (!set) this.sockets.set(key, (set = new Set()));
+    set.add(socket);
+    this.touch(key);
+  }
+
+  leave(key: string, socket: Socket): void {
+    const set = this.sockets.get(key);
+    if (!set?.delete(socket)) return;
+    if (!set.size) this.sockets.delete(key);
+    this.touch(key);
+  }
+
+  /** Status akun ini sekarang juga. */
+  status(key: string): FriendStatus {
+    return this.playing(key) ? 'playing' : this.sockets.has(key) ? 'lobby' : 'offline';
+  }
+
+  /** Keadaan akun ini mungkin berubah (masuk/keluar akun, sambungan putus, mulai/selesai bertanding). */
+  touch(key: string): void {
+    const now = this.status(key);
+    const pending = this.timers.get(key);
+    if (pending) clearTimeout(pending);
+    this.timers.delete(key);
+    if (now === (this.shown.get(key) ?? 'offline')) return; // sudah kembali ke yang dilihat teman
+    const timer = setTimeout(() => this.flush(key), now === 'offline' ? PRESENCE_OFFLINE_DELAY : PRESENCE_DELAY);
+    timer.unref?.();
+    this.timers.set(key, timer);
+  }
+
+  private flush(key: string): void {
+    this.timers.delete(key);
+    const status = this.status(key);
+    if (status === (this.shown.get(key) ?? 'offline')) return;
+    if (status === 'offline') this.shown.delete(key);
+    else this.shown.set(key, status);
+    const name = this.db.account(key)?.name;
+    if (!name) return;
+    const news: FrPresence = { name, status };
+    for (const friend of this.db.friendKeys(key)) this.emit(friend, 'fr:presence', news);
+  }
+
+  /** Daftar teman akun ini, dengan status tiap teman seperti yang terakhir dikabarkan. */
+  list(key: string): FriendList {
+    return this.db.friendList(key, (k) => this.shown.get(k) ?? 'offline');
+  }
+
+  /** Kirim event ke semua socket akun ini (kecuali `except`). */
+  emit(key: string, event: string, data: unknown, except?: Socket): void {
+    for (const s of this.sockets.get(key) ?? []) if (s !== except) s.emit(event, data);
+  }
+
+  /** Daftar akun ini berubah: kabari semua socket-nya (kecuali `except`, yang sudah mendapat jawabannya). */
+  pushList(key: string, except?: Socket): void {
+    const set = this.sockets.get(key);
+    if (!set || (set.size === 1 && except && set.has(except))) return;
+    this.emit(key, 'fr:update', this.list(key), except);
+  }
+}
+
 // ---------------------------------------------------------- event Socket.IO
 
 /** Akun yang sedang masuk di satu socket. */
@@ -557,11 +840,21 @@ export interface Seat {
 }
 
 /**
- * Pasang event akun pada satu socket. `onSignOut` dipanggil saat pemain keluar dari akunnya,
- * supaya pertandingan yang sedang ia mainkan tidak lagi dicatat ke akun itu.
+ * Pasang event akun dan teman pada satu socket. `onSignOut` dipanggil saat pemain keluar dari
+ * akunnya, supaya kursi pertandingan yang sedang ia duduki dilepas dari akun itu.
  */
-export function serveAccounts(socket: Socket, db: AccountDb, onSignOut: () => void): Seat {
+export function serveAccounts(socket: Socket, db: AccountDb, social: Social, onSignOut: () => void): Seat {
   let key: string | null = null;
+  /** Ganti akun yang masuk di socket ini (null = keluar); kehadirannya ikut diperbarui. */
+  const setKey = (next: string | null) => {
+    if (next === key) return;
+    if (key) social.leave(key, socket);
+    key = next;
+    if (key) social.enter(key, socket);
+  };
+  socket.on('disconnect', () => {
+    if (key) social.leave(key, socket);
+  });
   const ip = clientIp(socket);
   let eventsStart = 0;
   let events = 0;
@@ -615,7 +908,7 @@ export function serveAccounts(socket: Socket, db: AccountDb, onSignOut: () => vo
   };
 
   const signedIn = (r: { key: string; account: Account; token?: string }): AccSignedIn => {
-    key = r.key;
+    setKey(r.key);
     return { ok: true, account: r.account, ...(r.token ? { token: r.token } : {}), now: Date.now() };
   };
 
@@ -666,13 +959,76 @@ export function serveAccounts(socket: Socket, db: AccountDb, onSignOut: () => vo
   on('acc:logout', (d) => {
     db.revoke(d.token);
     if (key) {
-      key = null;
+      setKey(null);
       onSignOut();
     }
     return { ok: true };
   });
 
   on('acc:board', () => db.leaderboard(key));
+
+  // ---- daftar teman (protokolnya di shared/src/friends.ts)
+
+  const notIn = () => fail('Daftar teman hanya untuk akun online. Masuk atau daftar dulu.');
+  /** Nama akun sasaran dari client: teks pendek yang sudah dirapikan, atau '' bila tidak sah. */
+  const target = (d: Record<string, unknown>): string => (typeof d.name === 'string' && d.name.length <= 64 ? d.name.trim() : '');
+  /**
+   * Jawaban untuk pemanggil, dan kabar ke pihak lain yang daftarnya ikut berubah (`touched`) serta
+   * ke socket lain milik akun ini sendiri (tab atau perangkat lain).
+   */
+  const settle = (me: string, r: FriendChange): FrReply | AccFail => {
+    if (!r.ok) return r;
+    for (const other of r.touched) social.pushList(other);
+    social.pushList(me, socket);
+    return { ok: true, list: social.list(me), ...(r.info ? { info: r.info } : {}) };
+  };
+
+  on('fr:list', (): FrReply | AccFail => (key ? { ok: true, list: social.list(key) } : notIn()));
+
+  on('fr:add', (d) => {
+    if (!key) return notIn();
+    const me = key;
+    const name = target(d);
+    const bad = validateName(name);
+    if (bad) return fail(bad);
+    const wait = friendAdds.wait(me);
+    if (wait) return rate(wait, 'Terlalu banyak permintaan pertemanan.');
+    const r = db.friendAdd(me, name, (to) => {
+      const pair = `${me}>${to}`;
+      if (friendPair.wait(pair)) return false;
+      friendPair.hit(pair);
+      return true;
+    });
+    // yang dihitung hanya permintaan yang benar-benar dicatat, entah namanya ada atau tidak
+    if (r.ok) friendAdds.hit(me);
+    return settle(me, r);
+  });
+
+  on('fr:accept', (d) => (key ? settle(key, db.friendAccept(key, target(d))) : notIn()));
+  on('fr:decline', (d) => (key ? settle(key, db.friendDecline(key, target(d))) : notIn()));
+  on('fr:cancel', (d) => (key ? settle(key, db.friendCancel(key, target(d))) : notIn()));
+  on('fr:remove', (d) => (key ? settle(key, db.friendRemove(key, target(d))) : notIn()));
+
+  on('fr:invite', (d) => {
+    if (!key) return notIn();
+    const to = nameKey(target(d));
+    const room = typeof d.room === 'string' ? roomCode(d.room.slice(0, 64)) : '';
+    if (!room) return fail('Isi kode room dulu sebelum mengundang teman.');
+    // Hanya teman yang sudah saling menerima yang bisa diundang; nama yang tidak ada dan pemain
+    // yang bukan teman dijawab sama, dan tidak ada apa pun yang dikirim ke mereka.
+    const friend = to && db.areFriends(key, to) ? db.account(to) : null;
+    const mine = db.account(key);
+    if (!friend || !mine) return fail('Pemain itu tidak ada di daftar temanmu.');
+    const status = social.status(to);
+    if (status !== 'lobby') return fail(status === 'playing' ? `${friend.name} sedang bermain.` : `${friend.name} sedang offline.`);
+    const pair = `${key}>${to}`;
+    const wait = invitePair.wait(pair);
+    if (wait) return rate(wait, 'Undangan ke teman ini baru saja dikirim.');
+    invitePair.hit(pair);
+    const invite: FrInvite = { from: mine.name, room };
+    social.emit(to, 'fr:invite', invite);
+    return { ok: true };
+  });
 
   return {
     key: () => key,

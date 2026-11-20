@@ -14,7 +14,7 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
   Tower hanya bisa diserang setelah tower di depannya hancur; core terbuka setelah satu lane jebol.
 - Minion (3 melee + 1 ranged per lane) muncul tiap 30 detik, berjalan di lane, dan menyerang
   musuh terdekat.
-- 5 hero original dengan model low-poly dari bentuk primitif, masing-masing 4 skill (Q/W/E/R):
+- 6 hero original dengan model low-poly dari bentuk primitif, masing-masing 4 skill (Q/W/E/R):
   - **Volt Titan** (tank): Thunder Slam (stun area), Static Shield, Lightning Charge, Tempest Core.
   - **Nova Striker** (ranged blaster): Photon Beam (energy beam), Pulse Grenade, Blink Thrusters,
     Supernova Lance.
@@ -24,6 +24,9 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
   - **Ember Lancer** (fighter): Flame Thrust (tusukan garis + slow), Ember Guard (perisai +
     semburan api), Blazing Leap (lompat + slow area), Inferno Cyclone (pusaran api 3 detik yang
     mengikuti hero).
+  - **Gale Archer** (marksman / penembak jitu): Gale Piercer (panah angin menembus satu garis),
+    Slipstream (melesat + pusaran angin yang memperlambat), Squall Stance (4 detik menyerang lebih
+    cepat), Typhoon Volley (3 gelombang panah jarak jauh dengan garis peringatan).
 - Karakter beranimasi prosedural (kaki melangkah, siku menekuk, serangan, casting, tumbang saat
   tewas) dan arena yang detail: tebing batu berlumut, hutan cemara & pohon rindang, jalan batu,
   jalan setapak jungle, reruntuhan kuno, jamur & kristal berpendar, lampu jalan, panji tim, dan
@@ -39,7 +42,58 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
   selalu tampil di kartu **Rekomendasi** beserta kekurangan emasnya; begitu emas cukup kartu itu
   menyala (dan disorot lagi tiap naik level), lalu satu klik atau tombol `G` langsung membelinya.
   Bot berbelanja dengan urutan yang sama.
-- **Berkah Golem**: hero yang menghabisi Golem Rimba mendapat +20% damage selama 75 detik.
+- **Dua berkah hutan**: dua golem besar di sumbu tengah peta memberi berkah berbeda kepada hero
+  yang menghabisinya. Golem Rimba (sarang atas): **Berkah Golem**, +20% damage selama 75 detik.
+  Golem Arus (sarang bawah): **Berkah Arus**, mana pulih jauh lebih cepat dan cooldown skill
+  berjalan 25% lebih cepat selama 75 detik. Berkah yang dibawa tampil sebagai chip berhitung
+  mundur di atas panel hero.
+- **Titan Astra (boss objektif)**: bangkit di menit ke-4, bergantian di dua sarang golem itu
+  (golemnya menyingkir selagi Titan ada), dan bangkit lagi 4 menit setelah tumbang. Diumumkan 30
+  detik sebelumnya, ada hitung mundurnya di samping jam. Titan menyerang hero terdekat di
+  arenanya dan sesekali menghantam tanah: lingkaran peringatan muncul lebih dulu, jadi bisa
+  dihindari. Dari luar arenanya ia tidak bisa dilukai. Tim yang menumbangkannya mendapat emas
+  dan XP untuk semua hero, **Berkah Titan** (+15% damage, +15% lagi ke tower dan core, 75 detik,
+  hilang bila tumbang), dan satu **Raksasa Astra** yang mendorong lane dengan pertahanan lawan
+  paling tipis. Bot ikut menyerang Titan bila ada kawan yang sudah bertarung dengannya atau
+  timnya unggul jumlah. Angkanya di `TITAN_*` ([shared/src/constants.ts](shared/src/constants.ts)),
+  sarangnya `TITAN_PITS` ([shared/src/map.ts](shared/src/map.ts)).
+- **Kabut perang dan suar**: sebuah tim hanya melihat lawan dan monster yang berada dalam jarak
+  pandang salah satu unitnya (hero, minion, tower, core, suar); tower dan core selalu terlihat.
+  Yang tidak terlihat tidak dikirim server ke client itu, tidak bisa dibidik, dan efeknya tidak
+  ditampilkan; daerah di luar pandangan digelapkan di arena dan di minimap. Saat malam jarak
+  pandang hero menyusut. Tiap hero bisa menanam satu **suar** (tombol `T` / tombol mata): titik
+  penglihatan selama 75 detik, tidak terlihat lawan, jeda 50 detik. Aturannya di `VISION` dan
+  `visionRadius` ([shared/src/constants.ts](shared/src/constants.ts)), dipakai server dan client.
+- **Item aktif**: tiga item punya kemampuan yang dipakai lewat tombol (klik slotnya atau angka
+  `1`-`6`): Perisai Aegis (perisai sesaat), Jimat Murni (lepas dari perlambatan dan lumpuh, bisa
+  dipakai selagi lumpuh), dan Sangkakala Petir (gelombang damage + perlambatan di sekeliling).
+  Sisa jedanya tampil di slot item; bot ikut membeli dan memakainya.
+- **Talenta**: satu bonus kecil yang dipilih di lobby (Ganas, Tangguh, Gesit, Cerdik, Haus Darah,
+  Pemburu Harta), berlaku sepanjang pertandingan. Daftarnya di
+  [shared/src/talents.ts](shared/src/talents.ts); bot memilih acak.
+- **Mode Kilat**: pertandingan cepat di peta yang sama, dipilih di lobby oleh pemain pertama di
+  room. Hanya lane tengah yang punya tower dan minion, hero mulai di level 3 dengan 400 emas,
+  gelombang tiap 20 detik, Titan bangkit di menit ke-2, dan sejak menit 2,5 bangunan makin rapuh.
+  Batas waktunya 7 menit (jam menghitung mundur): bila belum ada Core yang hancur, menang tim
+  yang towernya lebih utuh, lalu yang kill-nya lebih banyak, lalu yang Core-nya lebih sehat.
+  Angkanya di `KILAT` ([shared/src/constants.ts](shared/src/constants.ts)).
+- **Menyerah**: setelah menit ke-5, tombol Menyerah di menu pesan cepat membuka pemungutan suara
+  30 detik untuk tim sendiri; lolos bila dua pertiga pemain manusia tim itu setuju.
+- **Bot pengganti**: pemain yang hero-nya hidup tetapi tidak memberi perintah selama 60 detik
+  digantikan bot sampai ia bermain lagi, supaya timnya tidak timpang.
+- **Latihan bebas**: tombol di lobby (atau `?latihan` di alamat) memulai pertandingan offline
+  dengan panel alat bantu: atur level dan emas, pulihkan dan reset semua jeda, boneka sasaran,
+  hentikan bot atau minion, panggil Titan. Hasilnya tidak dicatat ke akun.
+- **Bisukan pemain**: tombol Bisukan di papan skor menyembunyikan obrolan, pesan cepat, dan emote
+  dari satu pemain di perangkat sendiri (sampai halaman dimuat ulang).
+- **Pasang dari browser**: versi web punya manifest dan ikon sendiri
+  ([client/public/manifest.json](client/public/manifest.json)), jadi bisa ditaruh di layar utama
+  HP ("Tambahkan ke layar utama" / "Install app") dan dibuka layar penuh tanpa APK, termasuk di
+  iPhone. Ikonnya dibuat `scripts\make-icons.ps1` dari logo yang sama. File gambar dan manifest
+  itu sengaja tidak masuk daftar `version.json`, karena pembaruan di dalam APK mengunduh tiap
+  file sebagai teks.
+- **Client lama tetap aman**: client menyebut tingkat kemampuannya saat bergabung (`CLIENT_CAPS`);
+  server tidak mengirim jenis entity yang belum dikenal client lama (mis. suar).
 - **Penyiar pertandingan**: spanduk "Darah Pertama", Double/Triple Kill, kill beruntun, dan tower
   hancur; angka damage untuk seranganmu sendiri dan angka penyembuhan; tepi layar memerah saat
   sekarat.
@@ -173,6 +227,9 @@ Perintah lain:
 | Menyerang | klik kanan musuh | tombol pedang (musuh terdekat; tahan untuk terus menyerang), atau ketuk musuh tertentu |
 | Skill | `Q` `W` `E` `R` ke arah kursor | ketuk tombol skill (bidik otomatis ke musuh terdekat), atau tahan dan seret untuk membidik sendiri; lepas di tombol Batal untuk mengurungkan |
 | Mantra tempur | `F` ke arah kursor | tombol bundar di atas skill (ke arah joystick / arah hadap) |
+| Suar penglihatan | `T` di posisi kursor | tombol mata di kiri busur skill (beberapa langkah di depan hero) |
+| Item aktif | klik slot item, atau `1`-`6` sesuai nomor slotnya | ketuk slot item |
+| Menyerah | `V`, lalu tombol Menyerah (ketuk dua kali) | tombol 📣, lalu Menyerah |
 | Pesan cepat ke tim / emote | `V`, lalu `1`-`6` untuk pesan atau klik emote | tombol 📣 |
 | Pulang ke base (recall) | `B` | tombol rumah |
 | Beli item rekomendasi | `G` atau klik kartu Rekomendasi | ketuk kartu Rekomendasi |
@@ -247,24 +304,28 @@ snapshot datang tidak teratur (jaringan seluler).
 
 Layar pertama adalah **Masuk / Daftar** (atau "Main sebagai tamu"). Akun menyimpan level akun
 (XP dari tiap pertandingan), jumlah menang/kalah, KDA, statistik per hero, dan 20 pertandingan
-terakhir; semuanya terlihat di jendela **Profil** di lobby.
+terakhir; semuanya terlihat di jendela **Profil** di lobby. Akun online juga punya **tier
+peringkat** dan **daftar teman** (dua bagian di bawah).
 
 Ada dua jenis akun, dan layar masuk selalu menyebut mana yang sedang dipakai:
 
 - **Akun online** (lobby tersambung ke server multiplayer): akun disimpan di server game, jadi
   bisa dipakai di perangkat lain dan ikut **papan peringkat** (tombol **Peringkat** di lobby: 20
-  akun teratas menurut XP akun, ditambah baris pemain sendiri). Pemain tetap masuk setelah halaman
-  dimuat ulang lewat token sesi yang disimpan perangkat.
+  akun teratas menurut poin peringkat, lalu XP akun, lengkap dengan tier-nya, ditambah baris
+  pemain sendiri). Pemain tetap masuk setelah halaman dimuat ulang lewat token sesi yang disimpan
+  perangkat.
 - **Akun di perangkat ini** (tidak ada server yang terjangkau, atau servernya versi lama): akun
   dibuat dan disimpan di `localStorage` perangkat itu saja, seperti sebelumnya, dan tidak ikut
-  papan peringkat. Akun perangkat tidak dipindahkan ke server (client tidak boleh mengirim
-  statistiknya sendiri), jadi pemain lama perlu mendaftar sekali lagi sebagai akun online; akun
-  perangkatnya tetap ada dan dipakai lagi saat offline.
+  papan peringkat, tidak punya tier, dan tidak punya daftar teman (profil dan layar akhir
+  pertandingan mengatakannya, bukan menampilkan tier tiruan). Akun perangkat tidak dipindahkan ke
+  server (client tidak boleh mengirim statistiknya sendiri), jadi pemain lama perlu mendaftar
+  sekali lagi sebagai akun online; akun perangkatnya tetap ada dan dipakai lagi saat offline.
 
 **Hasil pertandingan online dicatat server, bukan client.** Saat pertandingan di sebuah room
 selesai, server memperbarui profil tiap pemain yang masuk akun dari data simulasinya sendiri
 (hero, menang/kalah, K/D/A, lama ikut bermain), tepat satu kali per pertandingan, lalu mengabari
-client lewat event `acc:match`; layar akhir menampilkan jawaban itu (XP, misi, pencapaian). Tidak
+client lewat event `acc:match`; layar akhir menampilkan jawaban itu (XP, poin peringkat, misi,
+pencapaian). Tidak
 ada event untuk mengirim statistik dari client. Rumus XP, level, misi harian, dan pencapaian ada
 di [shared/src/account.ts](shared/src/account.ts) dan
 [shared/src/progress.ts](shared/src/progress.ts), dipakai client dan server sekaligus. Beberapa
@@ -272,18 +333,81 @@ aturan khusus akun online:
 
 - pemain yang baru ikut kurang dari 2 menit saat pertandingan selesai (bergabung menjelang akhir)
   tidak dicatat; lama pertandingan yang dihitung adalah lama pemain itu ikut bermain;
-- pemain yang nyaris diam saja (kurang dari `MIN_RECORDED_ACTIONS` = 25 perintah gerak, serang,
-  atau skill sepanjang pertandingan) juga tidak dicatat, supaya papan peringkat tidak bisa diisi
-  dengan meninggalkan hero di base;
+- pemain yang nyaris diam saja tidak mendapat XP maupun kemenangan, dan untuk poin peringkat
+  dihitung kalah (seperti keluar). "Ikut bermain" berarti paling sedikit 25 perintah gerak,
+  serang, skill, atau item, dan rata-rata 8 per menit selama ia ikut (`actionsNeeded` di
+  [shared/src/account.ts](shared/src/account.ts)); tanpa itu papan peringkat bisa diisi dengan
+  meninggalkan hero di base, atau kekalahan dihindari dengan diam;
 - satu akun hanya bisa bermain di satu tempat pada satu waktu, dan selalu tampil dengan nama akunnya;
 - misi harian berganti pukul 00.00 WIB untuk semua pemain (`GAME_DAY_UTC_OFFSET`), di mana pun
   server-nya berada;
 - pertandingan **offline** yang dimainkan selagi memakai akun online adalah latihan: tidak
   dicatat, dan layar akhir mengatakannya.
 
+### Tier peringkat
+
+Tiap akun online punya **poin peringkat** (`rp` di profil; bilangan bulat, mulai dari 0, tidak
+pernah di bawah 0). Tier ditentukan dari poinnya; tabel dan hitungannya (`RANK_TIERS`, `rankTier`,
+`rankChange`) ada di [shared/src/account.ts](shared/src/account.ts), dipakai client dan server.
+
+| Tier | Perunggu | Perak | Emas | Platina | Berlian | Legenda |
+| --- | --- | --- | --- | --- | --- | --- |
+| Poin minimum | 0 | 100 | 250 | 450 | 700 | 1000 |
+
+Poin hanya berubah saat **server** mencatat pertandingan online (aturan di atas tetap berlaku:
+client tidak bisa mengirim apa pun):
+
+- **menang**: +14 / +20 / +28 untuk bot Mudah / Normal / Sulit (tingkat bot room itu), ditambah
+  +6 bila tim lawan berisi setidaknya satu pemain manusia saat pertandingan selesai;
+- **kalah**: −12;
+- pemain manusia di tim lawan hanya dihitung untuk bonus itu bila ia benar-benar ikut bermain;
+- mode Kilat bernilai 0,6 kali (menang +8 / +12 / +17, kalah −7), karena pertandingannya singkat;
+- ikut kurang dari 2 menit tidak mengubah poin; nyaris diam saja dihitung kalah;
+- **keluar dihitung kalah.** Bila kursi sebuah akun dilepas selagi pertandingannya masih berjalan
+  (kembali ke lobby, masa tunggu sambung-ulang 60 detik habis, keluar akun, atau akun itu mulai
+  bermain di tempat lain) dan pemainnya sudah memenuhi syarat pencatatan (minimal 2 menit dan 25
+  perintah), server langsung mencatat kekalahan dengan K/D/A saat itu: −12 poin, tanpa XP dan
+  tanpa kemajuan misi, bertanda "Keluar" di riwayat. Akun itu ditandai untuk pertandingan
+  tersebut, jadi bila masuk lagi ke pertandingan yang sama (di tim mana pun) hasil akhirnya tidak
+  dicatat lagi, dan layar akhir mengatakannya. Menyambung ulang dalam 60 detik dengan sesi yang
+  sama bukan keluar. Kursi yang dilepas server sendiri (server dimatikan) tidak dihukum.
+
+Tier tampil sebagai teks dengan lencana kecil berwarna yang digambar CSS (`.tier` di
+[client/src/account.css](client/src/account.css); tidak ada file gambar): di papan peringkat, di
+profil (poin dan kemajuan ke tier berikutnya), di tombol profil di lobby, di daftar teman, dan di
+layar akhir pertandingan (mis. "+20 poin peringkat", "−12", serta baris "Naik tier" / "Turun
+tier").
+
+### Daftar teman
+
+Tombol **Teman** di lobby (di samping Peringkat; angkanya = permintaan yang belum dijawab) membuka
+daftar teman akun online. Tidak ada pesan bebas di fitur ini: yang berpindah hanya nama akun,
+poin peringkat, status, dan kode room.
+
+- **Menambah teman** lewat nama akunnya (tanpa membedakan huruf besar/kecil). Itu membuat
+  permintaan; pemain satunya **menerima** atau **menolak**, dan kedua pihak bisa **menghapus**
+  pertemanan kapan saja. Dua pemain yang saling meminta langsung berteman.
+- **Tidak membocorkan nama mana yang terdaftar.** Jawabannya selalu "Permintaan terkirim bila
+  nama itu ada", dan nama itu masuk ke daftar "Permintaan terkirim" persis seperti diketik, baik
+  akunnya ada maupun tidak. Penolakan tidak dikabarkan ke pengirim (permintaannya tetap tampak
+  menunggu sampai ia membatalkannya). Permintaan ke kotak masuk yang sudah penuh juga dijawab sama
+  dan tidak diantar.
+- **Batas**: 50 teman, 20 permintaan terkirim, dan 20 permintaan masuk per akun.
+- **Kehadiran** hanya untuk teman yang sudah saling menerima: offline / di lobby / sedang bermain.
+  Server mendorongnya ke teman yang sedang tersambung saat nilainya berubah (tidak ada polling);
+  perubahan beruntun digabung, dan "offline" baru dikabarkan setelah 5 detik supaya memuat ulang
+  halaman tidak tampak sebagai keluar-masuk.
+- **Undang**: mengajak teman yang sedang di lobby ke room pribadi (bila kode room belum diisi,
+  lobby membuatkannya). Teman itu melihat "<nama> mengundangmu ke room ABCD" dengan tombol
+  **Gabung** (kode room terisi dan langsung bermain dengan hero yang sedang dipilih) dan
+  **Tolak**. Undangan hanya dikirim ke teman yang sudah saling menerima; untuk pemain lain server
+  menolak tanpa mengirim apa pun, dan client masih memeriksa sekali lagi bahwa pengirimnya ada di
+  daftar teman.
+
 **Yang disimpan dan pengamanannya** ([server/src/accounts.ts](server/src/accounts.ts)). Per akun
-hanya: nama, hash kata sandi, hash token sesi beserta waktu terakhir dipakai, dan statistik
-permainan. Tidak ada email, alamat IP, atau data perangkat.
+hanya: nama, hash kata sandi, hash token sesi beserta waktu terakhir dipakai, statistik
+permainan (termasuk poin peringkat), dan daftar teman beserta permintaan pertemanannya (berupa
+nama akun). Tidak ada email, alamat IP, atau data perangkat; kehadiran teman hanya ada di memori.
 
 - Kata sandi di-hash dengan `scrypt` bergaram (acak per akun) dan dibandingkan dalam waktu tetap;
   kata sandi dan token tidak pernah ditulis ke log atau dikirim balik.
@@ -295,6 +419,13 @@ permainan. Tidak ada email, alamat IP, atau data perangkat.
   atau `X-Real-IP`, dan hanya dipakai di memori. Bila proxy hosting tidak meneruskan alamat client,
   pembatas per alamat dilewati (kalau tidak, semua pemain berbagi satu jatah); pembatas per
   sambungan, per nama, dan batas pendaftaran seluruh server (120 per jam) tetap berlaku.
+- Pembatas laju daftar teman: 10 permintaan pertemanan per 10 menit per akun, paling banyak 2
+  permintaan yang diantar ke orang yang sama per jam (batal lalu kirim lagi berulang-ulang), satu
+  undangan per teman per 10 detik, dan semua event akun dan teman 30 per 10 detik per sambungan.
+- Semua yang diterima client dari server dianggap tidak dipercaya: profil, daftar teman, status,
+  dan undangan dibersihkan dulu (`cleanAccount`, `cleanFriendList`, `cleanInvite`: hanya nama akun
+  yang sah, angka, status yang dikenal, kode room baku) dan nama dilewatkan fungsi escape sebelum
+  masuk HTML.
 - Batas ukuran: nama 3–16 karakter, kata sandi 6–64 karakter, pesan dari client paling besar
   32 KB, dan jumlah akun paling banyak `MAX_ACCOUNTS`.
 
@@ -306,6 +437,15 @@ tidak bisa diunduh lewat web dan tidak tersentuh saat `.\build.cmd` mengunggah v
 dijalankan dari folder repo, foldernya `astra-legion-data/` (tidak ikut git). File ditulis ulang
 paling lambat 1,5 detik setelah ada perubahan, lewat file sementara lalu ganti nama, dan ditulis
 juga saat server berhenti.
+
+Bentuk filenya tetap `"v": 1`. Yang ditambahkan untuk tier dan teman: `profile.rp` (poin
+peringkat), `rp` dan `left` di tiap entri `profile.history`, dan per akun `friends` (kunci akun
+teman, selalu dua arah), `reqOut` (nama yang dikirimi permintaan, seperti diketik), dan `reqIn`
+(kunci akun yang permintaannya belum dijawab). File lama dimuat apa adanya: akun yang belum punya
+isian itu mulai dari 0 poin dan daftar kosong, dan tidak ada yang dibuang. Saat dimuat, daftar
+teman dirapikan (teman harus saling mencantumkan dan akunnya harus ada), jadi file yang diedit
+tangan tidak menghasilkan hubungan yang timpang. Server versi lama yang membaca file baru akan
+mengabaikan isian itu, dan membuangnya saat menulis ulang.
 
 - **Mencadangkan**: salin `accounts.json` ke tempat lain (boleh selagi server berjalan). Di
   hosting yang di-mount sebagai drive: `copy T:\astra-legion-data\accounts.json D:\cadangan\`.
@@ -331,7 +471,17 @@ sana, mis. `-v astra-data:/data`, supaya akun tidak hilang saat container dibuat
 ke server yang mendukung akun, dan ke `LocalAccountStore` selain itu; keduanya memenuhi antarmuka
 `AccountStore` yang sama. Protokolnya (event Socket.IO dengan acknowledgement) didokumentasikan
 di [shared/src/account.ts](shared/src/account.ts): `acc:hello`, `acc:register`, `acc:login`,
-`acc:resume`, `acc:logout`, `acc:board`, dan `acc:match` dari server.
+`acc:resume`, `acc:logout`, `acc:board`, dan `acc:match` dari server. `acc:hello` melaporkan versi
+protokol: 2 berarti server punya tier peringkat dan daftar teman; di server versi 1 client
+menyembunyikan keduanya.
+
+Daftar teman: protokolnya di [shared/src/friends.ts](shared/src/friends.ts) (`fr:list`, `fr:add`,
+`fr:accept`, `fr:decline`, `fr:cancel`, `fr:remove`, `fr:invite`, dan dari server `fr:update`,
+`fr:presence`, `fr:invite`), datanya di `AccountDb` dan kehadirannya di kelas `Social`
+([server/src/accounts.ts](server/src/accounts.ts)), sisi client di
+[client/src/account/friends.ts](client/src/account/friends.ts) (dipakai lewat `accounts.friends`),
+dan jendelanya `openFriends` di [client/src/ui/panels.ts](client/src/ui/panels.ts). Pencatatan
+"keluar dihitung kalah" ada di `forfeit` di [server/src/index.ts](server/src/index.ts).
 
 ## Mode online dan offline
 
@@ -555,7 +705,9 @@ lewat petunjuk `ai` di tiap skill.
 ## Menambah item baru
 
 Tambahkan entri di `ITEMS` pada [shared/src/items.ts](shared/src/items.ts) (harga + bonus stat);
-efeknya langsung dihitung server lewat `Hero.recalc`. Ikonnya opsional, di
+efeknya langsung dihitung server lewat `Hero.recalc`. Item aktif menambah `active` (jenis dan
+jeda); efeknya ada di `useItem` ([server/src/game/heroLogic.ts](server/src/game/heroLogic.ts)) dan
+angkanya di `ITEM_ACTIVE`. Ikonnya opsional, di
 [client/src/ui/icons.ts](client/src/ui/icons.ts) dengan key = `id` item. Supaya bot membelinya,
 tambahkan ke `BUILDS` di [shared/src/items.ts](shared/src/items.ts); urutan itu juga yang dipakai kartu Rekomendasi.
 

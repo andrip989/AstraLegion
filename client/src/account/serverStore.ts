@@ -6,12 +6,14 @@
 // "acc:match". Semua yang datang dari server dibersihkan dulu (cleanAccount, id yang dikenal)
 // sebelum dipakai, karena alamat server bisa diisi pemain sendiri.
 import {
+  ACC_PROTOCOL_SOCIAL,
   ACHIEVEMENTS,
   cleanAccount,
   gameDay,
   matchXp,
   missionById,
   nameKey,
+  rankTier,
   validateName,
   validatePassword,
   type AccBoard,
@@ -26,6 +28,7 @@ import {
 } from '../../../shared/src';
 import type { ServerLink } from '../net/transport';
 import type { AccountStore, AuthResult } from './accounts';
+import { Friends } from './friends';
 
 const SAVED_KEY = 'astra.online.v1';
 const NO_REPLY = 'Server tidak merespons. Periksa sambunganmu, lalu coba lagi.';
@@ -35,6 +38,8 @@ interface Saved {
   server: string;
   token: string;
   account: Account;
+  /** Server itu punya tier peringkat (protokol akun versi 2), jadi poin di salinan akunnya memang berarti. */
+  ranked?: boolean;
 }
 
 export interface Leaderboard {
@@ -42,16 +47,24 @@ export interface Leaderboard {
   /** Baris akun sendiri (null bila bermain sebagai tamu). */
   me: BoardRow | null;
   total: number;
+  /** Server ini punya tier peringkat; kalau tidak, papan diurutkan menurut XP seperti dulu. */
+  ranked: boolean;
 }
 
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
 const idList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 32) : []);
 
+const SKIPPED_TEXT: Record<NonNullable<AccMatch['skipped']>, string> = {
+  afk: 'Kamu hampir tidak ikut bermain di pertandingan ini: tidak ada XP, dan untuk poin peringkat dihitung kalah.',
+  short: 'Kamu bergabung kurang dari 2 menit sebelum pertandingan selesai, jadi hasilnya tidak dicatat ke akun.',
+  left: 'Kamu sempat keluar dari pertandingan ini, dan saat itu sudah dicatat sebagai kalah. Hasil akhirnya tidak dicatat lagi.',
+};
+
 function loadSaved(): Saved | null {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVED_KEY) ?? 'null') as Partial<Saved> | null;
     const account = cleanAccount(raw?.account);
-    if (raw && typeof raw.server === 'string' && typeof raw.token === 'string' && account) return { server: raw.server, token: raw.token, account };
+    if (raw && typeof raw.server === 'string' && typeof raw.token === 'string' && account) return { server: raw.server, token: raw.token, account, ranked: raw.ranked === true };
   } catch {
     /* data rusak / penyimpanan tidak tersedia: dianggap belum masuk */
   }
@@ -60,8 +73,12 @@ function loadSaved(): Saved | null {
 
 export class ServerAccountStore implements AccountStore {
   readonly kind = 'server';
+  /** Daftar teman akun yang sedang masuk (kosong dan tidak tersedia selama tidak masuk akun online). */
+  readonly friends = new Friends();
   private link: ServerLink | null = null;
   private saved = loadSaved();
+  /** Versi protokol akun server yang tersambung (0 = tidak tersambung). */
+  private version = 0;
   /** Akun yang sedang masuk di server yang tersambung sekarang. */
   private account: Account | null = null;
   /** Selisih jam server dan jam perangkat (ms), untuk menentukan hari permainan. */
@@ -81,6 +98,14 @@ export class ServerAccountStore implements AccountStore {
   /** Perangkat ini masih mengingat sesi akun online (dipakai untuk tampil saat offline). */
   hasSaved(): boolean {
     return this.saved !== null;
+  }
+
+  /**
+   * Akun ini punya tier peringkat: server yang tersambung mendukungnya, atau (saat offline)
+   * salinan akun yang tersimpan berasal dari server yang mendukungnya.
+   */
+  get ranked(): boolean {
+    return this.link ? this.version >= ACC_PROTOCOL_SOCIAL : this.saved?.ranked === true;
   }
 
   current(): Account | null {
@@ -103,9 +128,14 @@ export class ServerAccountStore implements AccountStore {
   private setAccount(account: Account, token?: string): void {
     this.account = account;
     if (!this.link) return;
-    if (token) this.saved = { server: this.link.endpoint, token, account };
-    else if (this.saved?.server === this.link.endpoint) this.saved.account = account;
-    else return;
+    const ranked = this.version >= ACC_PROTOCOL_SOCIAL;
+    // daftar teman mengikuti akun yang masuk (tidak ada di server versi lama)
+    this.friends.bind(ranked ? this.link : null, account.name);
+    if (token) this.saved = { server: this.link.endpoint, token, account, ranked };
+    else if (this.saved?.server === this.link.endpoint) {
+      this.saved.account = account;
+      this.saved.ranked = ranked;
+    } else return;
     this.persist();
   }
 
@@ -142,8 +172,10 @@ export class ServerAccountStore implements AccountStore {
       }
     }
     this.link = link;
+    this.version = int(hello.v);
     this.skew = (Number(hello.now) || Date.now()) - Date.now();
     link.on('acc:match', (data) => this.onMatch(data));
+    this.friends.listen(link);
     link.reauth = (request) => {
       const mine = this.link === link && this.account ? this.saved : null;
       return mine?.server === link.endpoint ? request('acc:resume', { token: mine.token }, 2500) : Promise.resolve(null);
@@ -160,7 +192,9 @@ export class ServerAccountStore implements AccountStore {
 
   private reset(): void {
     this.link = null;
+    this.version = 0;
     this.account = null;
+    this.friends.bind(null, null);
     this.pending = null;
     clearTimeout(this.pendingTimer);
     this.waiter?.(null);
@@ -204,6 +238,7 @@ export class ServerAccountStore implements AccountStore {
     }
     this.account = null;
     this.pending = null;
+    this.friends.bind(null, null);
   }
 
   // ---- hasil pertandingan
@@ -214,7 +249,10 @@ export class ServerAccountStore implements AccountStore {
     const account = cleanAccount(m.account);
     // hanya untuk akun yang sedang masuk di sini
     if (!account || !this.account || nameKey(account.name) !== nameKey(this.account.name)) return;
-    const clean: AccMatch = { account, xp: int(m.xp), missions: idList(m.missions), unlocked: idList(m.unlocked), ...(m.skipped === 'short' || m.skipped === 'afk' ? { skipped: m.skipped } : {}) };
+    const clean: AccMatch = { account, xp: int(m.xp), missions: idList(m.missions), unlocked: idList(m.unlocked) };
+    // perubahan poin peringkat boleh negatif; besarnya dibatasi supaya aman ditampilkan
+    if (typeof m.rp === 'number' && Number.isFinite(m.rp)) clean.rp = Math.max(-999, Math.min(999, Math.trunc(m.rp)));
+    if (m.skipped === 'short' || m.skipped === 'afk' || m.skipped === 'left') clean.skipped = m.skipped;
     if (this.waiter) {
       const waiter = this.waiter;
       this.waiter = null;
@@ -235,11 +273,17 @@ export class ServerAccountStore implements AccountStore {
     this.setAccount(m.account);
     const out: MatchOutcome = { account: m.account, xp: m.xp, missions: [], unlocked: [] };
     if (m.skipped) {
-      out.skipped =
-        m.skipped === 'afk'
-          ? 'Kamu hampir tidak ikut bermain di pertandingan ini, jadi hasilnya tidak dicatat ke akun.'
-          : 'Kamu bergabung kurang dari 2 menit sebelum pertandingan selesai, jadi hasilnya tidak dicatat ke akun.';
+      out.skipped = SKIPPED_TEXT[m.skipped];
       return out;
+    }
+    // poin peringkat: angka server; tier sebelum dan sesudahnya dihitung dari tabel milik client
+    if (this.ranked && m.rp !== undefined) {
+      const rp = m.account.profile.rp;
+      const now = rankTier(rp);
+      const before = rankTier(Math.max(0, rp - m.rp));
+      out.rank = { delta: m.rp, rp, tier: now.tier, ...(before.index !== now.index ? { was: before.tier } : {}) };
+    } else {
+      out.rankNote = 'Server ini belum mendukung tier peringkat, jadi poin peringkat tidak berubah.';
     }
     // server hanya mengirim id; teksnya diambil dari daftar milik client sendiri
     for (const id of m.missions) {
@@ -260,7 +304,7 @@ export class ServerAccountStore implements AccountStore {
    */
   async recordMatch(rec: MatchResult): Promise<MatchOutcome> {
     const none = { xp: 0, missions: [], unlocked: [] };
-    if (rec.mode !== 'online') return { account: this.current(), ...none, skipped: 'Latihan offline: hasil pertandingan ini tidak dicatat ke akun online.' };
+    if (rec.mode !== 'online') return { account: this.current(), ...none, skipped: 'Latihan offline: hasil pertandingan ini tidak dicatat ke akun online dan tidak mengubah poin peringkat.' };
     if (!this.link) return { account: this.current(), ...none, skipped: 'Server ini belum mendukung akun online, jadi hasil pertandingan ini tidak dicatat.' };
     if (!this.account) return { account: null, ...none, xp: matchXp(rec) }; // tamu
     let m = this.pending;
@@ -290,8 +334,8 @@ export class ServerAccountStore implements AccountStore {
     const row = (x: unknown): BoardRow | null => {
       const b = (x ?? {}) as Partial<BoardRow>;
       if (typeof b.name !== 'string' || validateName(b.name)) return null;
-      return { rank: int(b.rank), name: b.name, level: int(b.level), xp: int(b.xp), wins: int(b.wins), matches: int(b.matches) };
+      return { rank: int(b.rank), name: b.name, rp: int(b.rp), level: int(b.level), xp: int(b.xp), wins: int(b.wins), matches: int(b.matches) };
     };
-    return { top: r.top.slice(0, 50).map(row).filter((b): b is BoardRow => b !== null), me: row(r.me), total: int(r.total) };
+    return { top: r.top.slice(0, 50).map(row).filter((b): b is BoardRow => b !== null), me: row(r.me), total: int(r.total), ranked: this.ranked };
   }
 }

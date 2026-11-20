@@ -3,6 +3,7 @@ import type { SkillDef } from '../../../../shared/src';
 import type { Game } from '../Game';
 import type { Hero } from '../entities';
 import { emberLancerSkills } from './emberLancer';
+import { galeArcherSkills } from './galeArcher';
 import { lumenSageSkills } from './lumenSage';
 import { novaStrikerSkills } from './novaStriker';
 import { shadowFangSkills } from './shadowFang';
@@ -30,4 +31,5 @@ export const SKILL_HANDLERS: Record<string, SkillHandler> = {
   ...shadowFangSkills,
   ...lumenSageSkills,
   ...emberLancerSkills,
+  ...galeArcherSkills,
 };

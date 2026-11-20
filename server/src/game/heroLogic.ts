@@ -1,5 +1,5 @@
 // Logika hero: regenerasi, perintah gerak/serang, dash, dan casting skill.
-import { BUSH_REVEAL_TIME, FOUNTAINS, FOUNTAIN_RADIUS, PASSIVE_GOLD_PER_SEC, SPELLS, ULT_UNLOCK_LEVEL } from '../../../shared/src';
+import { BUSH_REVEAL_TIME, FLOW_COOLDOWN, FLOW_MANA, FOUNTAINS, FOUNTAIN_RADIUS, PASSIVE_GOLD_PER_SEC, SPELLS, ULT_UNLOCK_LEVEL, ITEMS, ITEM_ACTIVE, KILAT } from '../../../shared/src';
 import type { Game } from './Game';
 import type { Hero } from './entities';
 import { SKILL_HANDLERS } from './skills';
@@ -43,6 +43,46 @@ function followPath(game: Game, h: Hero, dt: number): boolean {
   return h.pathIdx >= h.path.length;
 }
 
+/**
+ * Pakai kemampuan aktif item di slot `slot`. Pembersih bisa dipakai selagi lumpuh (itulah gunanya);
+ * yang lain tidak.
+ */
+export function useItem(game: Game, h: Hero, slot: number): boolean {
+  const id = h.items[slot];
+  const active = id ? ITEMS[id]?.active : undefined;
+  if (!h.alive || !active || (h.itemCd[id] ?? 0) > 0) return false;
+  if (active.kind !== 'cleanse' && game.isStunned(h)) return false;
+  const x = Math.round(h.x * 100) / 100;
+  const z = Math.round(h.z * 100) / 100;
+  if (active.kind === 'shield') {
+    const a = ITEM_ACTIVE.shield;
+    h.shield = Math.max(h.shield, a.base + a.perLevel * h.level);
+    h.shieldUntil = Math.max(h.shieldUntil, game.time + a.time);
+    game.emit({ k: 'ring', x, z, r: 2.2, c: 0x9fd0ff });
+  } else if (active.kind === 'cleanse') {
+    const a = ITEM_ACTIVE.cleanse;
+    h.stunUntil = 0;
+    h.slowUntil = 0;
+    h.haste = Math.max(h.hasteUntil > game.time ? h.haste : 1, a.haste);
+    h.hasteUntil = Math.max(h.hasteUntil, game.time + a.time);
+    game.emit({ k: 'ring', x, z, r: 2.2, c: 0x7dffb0 });
+  } else {
+    const a = ITEM_ACTIVE.shock;
+    const dmg = a.base + a.perLevel * h.level;
+    game.emit({ k: 'ring', x, z, r: a.radius, c: 0xffd23f });
+    // seperti skill area lain: mengenai semua lawan di dalam radius, termasuk yang bersembunyi atau belum terlihat
+    for (const u of game.enemiesNear(h.team, h.x, h.z, a.radius)) {
+      game.damage(h, u, dmg);
+      if (u.alive && !u.invulnerable) game.slow(u, a.slow, a.slowTime);
+    }
+    h.revealUntil = game.time + BUSH_REVEAL_TIME; // menyerang membongkar persembunyian
+    h.invisUntil = 0;
+  }
+  h.recallAt = 0;
+  h.itemCd[id] = active.cooldown;
+  return true;
+}
+
 export function updateHero(game: Game, h: Hero, dt: number): void {
   const now = game.time;
   h.spellCd = Math.max(0, h.spellCd - dt); // cooldown mantra tetap berjalan selagi tumbang
@@ -59,10 +99,16 @@ export function updateHero(game: Game, h: Hero, dt: number): void {
     manaRegen += h.maxMana * 0.25;
   }
   h.hp = Math.min(h.maxHp, h.hp + hpRegen * dt);
+  const flowing = h.flowUntil > now; // Berkah Arus
+  if (flowing) manaRegen = manaRegen * FLOW_MANA + h.maxMana * 0.012;
   h.mana = Math.min(h.maxMana, h.mana + manaRegen * dt);
-  h.gold += PASSIVE_GOLD_PER_SEC * dt;
-  h.goldEarned += PASSIVE_GOLD_PER_SEC * dt;
-  for (let i = 0; i < 4; i++) h.cds[i] = Math.max(0, h.cds[i] - dt);
+  const passive = PASSIVE_GOLD_PER_SEC * (game.mode === 'kilat' ? KILAT.gold : 1) * dt;
+  h.gold += passive;
+  h.goldEarned += passive;
+  h.wardCd = Math.max(0, h.wardCd - dt);
+  for (const id in h.itemCd) if (h.itemCd[id] > 0) h.itemCd[id] = Math.max(0, h.itemCd[id] - dt);
+  const cdTick = flowing ? dt * (1 + FLOW_COOLDOWN) : dt;
+  for (let i = 0; i < 4; i++) h.cds[i] = Math.max(0, h.cds[i] - cdTick);
   h.attackCd = Math.max(0, h.attackCd - dt);
   if (h.shield > 0 && now >= h.shieldUntil) h.shield = 0;
 

@@ -5,6 +5,7 @@ import {
   F_BUFF,
   F_BUSH,
   TOWER_RANGE,
+  visionRadius,
   F_INVIS,
   F_INVULN,
   F_RECALL,
@@ -387,8 +388,8 @@ export class EntityViews {
     }
 
     // HP bar
-    const barW = st.kind === 'hero' ? 2.3 : st.kind === 'tower' ? 2.9 : st.kind === 'core' ? 4.6 : st.sub === 'big' ? 2.1 : st.sub === 'super' ? 1.8 : 1.15;
-    const barH = st.sub === 'super' ? 0.24 : st.kind === 'minion' ? 0.17 : st.kind === 'hero' ? 0.34 : 0.3;
+    const barW = st.kind === 'hero' ? 2.3 : st.kind === 'tower' ? 2.9 : st.kind === 'core' ? 4.6 : st.sub === 'titan' ? 5.4 : st.sub === 'siege' || st.sub === 'dummy' ? 2.7 : st.sub === 'big' || st.sub === 'flow' ? 2.1 : st.sub === 'super' ? 1.8 : 1.15;
+    const barH = st.sub === 'titan' ? 0.44 : st.sub === 'siege' ? 0.3 : st.sub === 'super' ? 0.24 : st.kind === 'minion' ? 0.17 : st.kind === 'hero' ? 0.34 : 0.3;
     const mat = BAR_MAT.clone();
     const barKind = this.barKindOf(st, false);
     mat.uniforms.uSize.value.set(barW, barH);
@@ -398,6 +399,7 @@ export class EntityViews {
     bar.position.y = built.height + 0.4;
     bar.renderOrder = 10;
     bar.layers.set(OVERLAY_LAYER);
+    if (st.kind === 'ward') bar.scale.set(0, 0, 1); // suar tidak punya HP: barnya disembunyikan
     root.add(bar);
 
     const v: View = {
@@ -428,6 +430,51 @@ export class EntityViews {
     this.views.set(st.id, v);
     this.scene.add(root);
     if (st.kind === 'hero') this.setLabel(v, this.infos.get(st.id));
+    else if (st.sub === 'titan') this.setTitle(v, st.name, '#ffb347');
+    else if (st.sub === 'siege') this.setTitle(v, st.name, st.team === this.myTeam ? '#cfe4ff' : '#ffd0cc');
+    else if (st.sub === 'dummy') this.setTitle(v, st.name, '#ffe9b8');
+  }
+
+  /**
+   * Sumber penglihatan tim sendiri sebagai deret [x, z, radius, ...] (hero, minion, tower, core,
+   * suar), untuk menggambar kabut perang. Aturannya sama dengan server (visionRadius di shared).
+   */
+  visionSources(night: boolean, out: number[]): number[] {
+    out.length = 0;
+    for (const v of this.views.values()) {
+      if (v.st.team !== this.myTeam) continue;
+      const r = visionRadius(v.st.kind, v.st.sub, night);
+      if (r > 0) out.push(v.x, v.z, r);
+    }
+    return out;
+  }
+
+  /** Nama di atas unit istimewa (Titan Astra, Raksasa Astra): teks saja, tanpa lencana level. */
+  private setTitle(v: View, text: string, color: string): void {
+    const W = 320;
+    const H = 56;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = '800 30px "Segoe UI", Roboto, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(5,8,16,0.92)';
+    ctx.strokeText(text, W / 2, H / 2 + 1, W - 16);
+    ctx.fillStyle = color;
+    ctx.fillText(text, W / 2, H / 2 + 1, W - 16);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    v.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, toneMapped: false }));
+    v.label.scale.set(4.6, 4.6 * (H / W), 1);
+    v.label.position.y = v.height + 1.05;
+    v.label.renderOrder = 12;
+    v.label.layers.set(OVERLAY_LAYER);
+    v.root.add(v.label);
+    v.labelKey = text;
   }
 
   /** Label di atas hero: lencana level + nama, digambar ke canvas. */
@@ -620,7 +667,8 @@ export class EntityViews {
         v.hit = Math.max(0, v.hit - dt * 5);
         const body = v.mats[0] as THREE.MeshStandardMaterial | undefined;
         if (body?.emissive) body.emissive.setScalar(v.hit * 0.55);
-        else if (!isBuilding(v.st)) v.model.scale.setScalar(1 + v.hit * 0.07);
+        // skala dasar model ikut dipakai: unit yang diperbesar (minion super, Raksasa, Titan) tidak boleh menciut saat terpukul
+        else if (!isBuilding(v.st)) v.model.scale.setScalar(((v.model.userData.baseScale as number | undefined) ?? 1) * (1 + v.hit * 0.07));
       }
 
       // HP bar selalu menghadap kamera; jejak putih menyusul pelan-pelan

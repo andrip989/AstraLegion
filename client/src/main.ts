@@ -1,16 +1,18 @@
 // Titik masuk client: layar masuk/daftar -> lobby pemilihan hero -> sambung ke server (atau
 // offline) -> mulai game.
-import { BOT_LEVELS, DEFAULT_SPELL, HERO_LIST, SKILL_KEYS, SKINS, SPELLS, SPELL_LIST, roomCode, type Team } from '../../shared/src';
+import { BOT_LEVELS, CLIENT_CAPS, DEFAULT_SPELL, DEFAULT_TALENT, GAME_MODES, HERO_LIST, SKILL_KEYS, SKINS, SPELLS, SPELL_LIST, TALENTS, TALENT_LIST, roomCode, type GameMode, type Team } from '../../shared/src';
+import { askTraining } from './ui/Training';
 import { accountLevel, accounts, validateName, validatePassword } from './account/accounts';
 import { sound } from './audio/Sound';
 import { GameClient } from './game/GameClient';
 import { connect, type Transport } from './net/transport';
 import { renderPortraits } from './render/portraits';
 import { skillIcon } from './ui/icons';
-import { openLeaderboard, openProfile, openSettings } from './ui/panels';
+import { closeModal, openFriends, openLeaderboard, openProfile, openSettings } from './ui/panels';
 import { APP_VERSION, UPDATE_URL, applyUpdate, checkForUpdate, confirmUpdate, isNative, shellOutdated } from './update';
 import { spellIcon } from './ui/spellIcons';
 import { dailyView } from './account/progress';
+import { tierBadgeFor } from './account/rank';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const store = {
@@ -161,6 +163,8 @@ function refreshAccountBar(): void {
   const acc = accounts.current();
   $('acc-name').textContent = acc ? acc.name : 'Tamu · masuk / daftar';
   $('acc-level').textContent = acc ? String(accountLevel(acc.profile.xp).level) : '–';
+  // lambang tier hanya untuk akun yang memang punya tier (akun online); yang lain tanpa lambang
+  $('acc-tier').innerHTML = acc && accounts.ranked ? tierBadgeFor(acc.profile.rp, false) : '';
   // pemain yang masuk memakai nama akunnya; tamu boleh mengetik nama bebas
   const nameInput = $<HTMLInputElement>('name-input');
   nameInput.classList.toggle('hidden', !!acc);
@@ -170,6 +174,7 @@ function refreshAccountBar(): void {
 function showAuth(): void {
   $('lobby').classList.add('hidden');
   $('auth').classList.remove('hidden');
+  hideInvite();
   setAuthTab(authTab);
   refreshAuthKind();
   $<HTMLInputElement>('auth-name').focus();
@@ -296,6 +301,57 @@ $('rank-btn').addEventListener('click', () => {
   void openLeaderboard();
 });
 
+// ----- teman: tombol dengan jumlah permintaan masuk, dan undangan ke room dari teman -----
+$('friends-btn').addEventListener('click', () => {
+  sound.unlock();
+  sound.play('click');
+  openFriends(ensureRoomCode);
+});
+/** Angka di tombol Teman: permintaan pertemanan yang belum dijawab. */
+function refreshFriendsBadge(): void {
+  const waiting = accounts.friends.available ? accounts.friends.list.incoming.length : 0;
+  const badge = $('friends-badge');
+  badge.textContent = waiting ? String(waiting) : '';
+  badge.classList.toggle('hidden', !waiting);
+  $('friends-btn').title = waiting ? `Daftar teman · ${waiting} permintaan menunggu` : 'Daftar teman';
+}
+accounts.friends.subscribe(refreshFriendsBadge);
+
+/** Kode room dari undangan yang sedang ditampilkan ('' = tidak ada). */
+let invitedRoom = '';
+let inviteTimer = 0;
+function hideInvite(): void {
+  invitedRoom = '';
+  clearTimeout(inviteTimer);
+  $('invite-toast').classList.add('hidden');
+}
+// Undangan hanya sampai ke sini bila pengirimnya ada di daftar teman (diperiksa server, lalu
+// sekali lagi oleh client; lihat account/friends.ts), dan hanya ditampilkan selagi di lobby.
+accounts.friends.onInvite = (invite) => {
+  if ($('lobby').classList.contains('hidden')) return;
+  invitedRoom = invite.room;
+  $('invite-text').textContent = `${invite.from} mengundangmu ke room ${invite.room}`;
+  $('invite-toast').classList.remove('hidden');
+  sound.play('levelup');
+  clearTimeout(inviteTimer);
+  inviteTimer = window.setTimeout(hideInvite, 30_000);
+};
+$('invite-decline').addEventListener('click', () => {
+  sound.play('click');
+  hideInvite();
+});
+// Gabung: kode room diisikan, lalu langsung bermain dengan hero yang sedang dipilih
+$('invite-join').addEventListener('click', () => {
+  const code = invitedRoom;
+  hideInvite();
+  if (!code) return;
+  closeModal();
+  roomInput.value = code;
+  syncRoom();
+  if (playBtn.disabled) roomHint.textContent = `Kode room ${code} sudah terisi. Tekan MAIN begitu tersambung ke server.`;
+  else playBtn.click();
+});
+
 // sudah masuk, atau pernah memilih main sebagai tamu: langsung ke lobby
 if (accounts.current() || store.get(GUEST_KEY)) showLobby();
 else showAuth();
@@ -334,7 +390,8 @@ function startConnect(retry = 0): void {
   // padahal sedang di luar), server bawaan tetap dicoba sebelum menyerah ke mode offline.
   const chosen = chosenServer();
   // ?offline di alamat halaman: langsung latihan lawan bot tanpa mencoba server mana pun.
-  const offline = new URLSearchParams(location.search).has('offline');
+  const query = new URLSearchParams(location.search);
+  const offline = query.has('offline') || query.has('latihan'); // ?latihan = latihan bebas, selalu offline
   const urls = offline ? [] : chosen && chosen !== DEFAULT_SERVER ? [chosen, DEFAULT_SERVER] : [DEFAULT_SERVER];
   transport = connect(urls);
   accountsReady = transport.then(async (t) => {
@@ -460,8 +517,8 @@ function syncBots(): void {
 }
 syncBots();
 
-// Tautan undangan: membuka game langsung dengan kode room terisi. Tanpa kode, dibuatkan dulu.
-$('invite-btn').addEventListener('click', async () => {
+/** Kode room pribadi yang sedang diisi; bila masih kosong, dibuatkan dulu (dipakai tautan undangan dan undangan ke teman). */
+function ensureRoomCode(): string {
   if (!roomCode(roomInput.value)) {
     const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     roomInput.value = Array.from({ length: 5 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
@@ -469,6 +526,12 @@ $('invite-btn').addEventListener('click', async () => {
   }
   const code = roomCode(roomInput.value);
   store.set('room', code);
+  return code;
+}
+
+// Tautan undangan: membuka game langsung dengan kode room terisi. Tanpa kode, dibuatkan dulu.
+$('invite-btn').addEventListener('click', async () => {
+  const code = ensureRoomCode();
   // di dalam APK alamat halamannya lokal, jadi yang dibagikan adalah alamat hosting
   const page = isNative && UPDATE_URL ? `${UPDATE_URL}/` : location.origin + location.pathname;
   const link = `${page}?room=${code}`;
@@ -482,6 +545,81 @@ $('invite-btn').addEventListener('click', async () => {
   roomHint.textContent = copied ? `Tautan undangan disalin: ${link}` : `Bagikan tautan ini ke temanmu: ${link}`;
 });
 
+// ----- mode pertandingan -----
+let selectedMode: GameMode = store.get('mode') === 'kilat' ? 'kilat' : 'klasik';
+const modePick = $('mode-pick');
+function syncMode(): void {
+  for (const b of modePick.querySelectorAll<HTMLButtonElement>('button')) b.classList.toggle('on', b.dataset.mode === selectedMode);
+}
+for (const id of Object.keys(GAME_MODES) as GameMode[]) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.mode = id;
+  b.textContent = GAME_MODES[id].name;
+  b.title = `Mode ${GAME_MODES[id].name}: ${GAME_MODES[id].desc}`;
+  b.addEventListener('click', () => {
+    selectedMode = id;
+    store.set('mode', id);
+    sound.play('click');
+    syncMode();
+    roomHint.textContent = `Mode ${GAME_MODES[id].name}: ${GAME_MODES[id].desc} Berlaku bila kamu pemain pertama di room.`;
+  });
+  modePick.appendChild(b);
+}
+syncMode();
+
+// ----- talenta -----
+let selectedTalent = TALENTS[store.get('talent')] ? store.get('talent') : DEFAULT_TALENT;
+const talentPick = $('talent-pick');
+function syncTalent(): void {
+  for (const b of talentPick.querySelectorAll<HTMLButtonElement>('button')) b.classList.toggle('on', b.dataset.talent === selectedTalent);
+}
+for (const d of TALENT_LIST) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.talent = d.id;
+  b.title = `Talenta ${d.name}: ${d.desc}`;
+  b.innerHTML = `<i></i><span>${d.name}</span>`;
+  b.style.setProperty('--sc', '#' + d.color.toString(16).padStart(6, '0'));
+  b.addEventListener('click', () => {
+    selectedTalent = d.id;
+    store.set('talent', d.id);
+    sound.play('click');
+    syncTalent();
+    roomHint.textContent = `Talenta ${d.name}: ${d.desc}`;
+  });
+  talentPick.appendChild(b);
+}
+syncTalent();
+
+// ----- latihan bebas: pertandingan offline dengan alat bantu, walau server sedang tersambung -----
+askTraining(false); // tanda latihan dari pertandingan sebelumnya tidak boleh terbawa
+const trainBtn = $<HTMLButtonElement>('train-btn');
+trainBtn.addEventListener('click', async () => {
+  trainBtn.disabled = playBtn.disabled = true;
+  sound.unlock();
+  sound.play('click');
+  askTraining(true);
+  const name = accounts.current()?.name ?? (nameInput.value.trim() || 'Pemain');
+  const t = await connect([]); // tanpa alamat server: simulasi lokal
+  const result = await t.join({ caps: CLIENT_CAPS, name, heroId: selectedHero, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel, mode: selectedMode, talent: selectedTalent });
+  if (!result.ok) {
+    askTraining(false);
+    status.className = 'off';
+    status.textContent = result.error ?? 'Gagal memulai latihan.';
+    trainBtn.disabled = playBtn.disabled = false;
+    return;
+  }
+  // sambungan lobby ke server (bila ada) dilepas: pertandingan ini sepenuhnya di perangkat
+  void transport.then((old) => old !== t && old.close()).catch(() => {});
+  hideInvite();
+  $('lobby').classList.add('hidden');
+  $('loading').classList.remove('hidden');
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+  new GameClient(t, toAuth, '');
+  $('loading').classList.add('hidden');
+});
+
 playBtn.addEventListener('click', async () => {
   playBtn.disabled = true;
   sound.unlock();
@@ -492,7 +630,7 @@ playBtn.addEventListener('click', async () => {
   if (!acc) store.set('name', name);
   const room = roomCode(roomInput.value);
   store.set('room', room);
-  const result = await t.join({ name, heroId: selectedHero, room, team: wantTeam, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel });
+  const result = await t.join({ caps: CLIENT_CAPS, name, heroId: selectedHero, room, team: wantTeam, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel, mode: selectedMode, talent: selectedTalent });
   if (!result.ok) {
     status.className = 'off';
     status.textContent = result.error ?? 'Gagal bergabung.';
@@ -501,6 +639,7 @@ playBtn.addEventListener('click', async () => {
   }
   // membangun arena (tekstur, map, model) bisa makan waktu sedetik lebih di kualitas tinggi:
   // tampilkan layar tunggu dulu, baru mulai membangun di frame berikutnya
+  hideInvite();
   $('lobby').classList.add('hidden');
   $('loading').classList.remove('hidden');
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));

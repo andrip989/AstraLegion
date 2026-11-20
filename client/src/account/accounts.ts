@@ -9,6 +9,7 @@
 
 import { applyMatch, emptyProfile, matchXp, validateName, validatePassword, type Account, type MatchOutcome, type MatchResult, type Profile } from '../../../shared/src';
 import type { ServerLink } from '../net/transport';
+import type { Friends } from './friends';
 import { todayKey } from './progress';
 import { ServerAccountStore, type Leaderboard } from './serverStore';
 
@@ -227,9 +228,16 @@ class LocalAccountStore implements AccountStore {
     const user = this.db.session ? this.db.users[this.db.session] : undefined;
     if (!user) return { account: null, xp: matchXp(rec), missions: [], unlocked: [] };
     const p = (user.profile = { ...emptyProfile(), ...user.profile });
+    // tanpa keadaan room dari server: poin peringkat tidak disentuh (akun di perangkat tidak punya tier)
     const r = applyMatch(p, rec, Date.now(), this.today());
     this.save();
-    return { account: this.toAccount(user), xp: r.xp, missions: r.missions, unlocked: r.unlocked.map((a) => a.name) };
+    return {
+      account: this.toAccount(user),
+      xp: r.xp,
+      missions: r.missions,
+      unlocked: r.unlocked.map((a) => a.name),
+      rankNote: 'Akun di perangkat ini tidak punya tier peringkat. Poin peringkat hanya dari pertandingan online dengan akun online.',
+    };
   }
 }
 
@@ -270,6 +278,19 @@ class AccountHub implements AccountStore {
   /** Tersambung ke server yang mendukung akun online (masuk, daftar, dan papan peringkat tersedia). */
   get online(): boolean {
     return this.server.linked;
+  }
+
+  /**
+   * Akun yang sedang dipakai punya tier peringkat: akun online di server yang mendukungnya (saat
+   * offline: salinan terakhirnya). Akun di perangkat tidak pernah punya tier.
+   */
+  get ranked(): boolean {
+    return this.active === this.server && this.server.ranked;
+  }
+
+  /** Daftar teman akun online yang sedang masuk (lihat friends.ts); tidak tersedia untuk tamu dan akun di perangkat. */
+  get friends(): Friends {
+    return this.server.friends;
   }
 
   /** Nama akun di perangkat ini yang sedang masuk (tetap dipakai saat offline), bila ada. */

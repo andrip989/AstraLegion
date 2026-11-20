@@ -4,6 +4,8 @@ export * from './heroes';
 export * from './items';
 export * from './types';
 export * from './spells';
+export * from './talents';
 export * from './skins';
 export * from './progress';
 export * from './account';
+export * from './friends';

@@ -36,6 +36,8 @@ const LINES = {
   begin: 'Let the battle begin!',
   victory: 'Victory!',
   defeat: 'Defeat!',
+  titan: 'The Titan awakens!',
+  titan_slain: 'Titan slain!',
 };
 
 const RATE = 22050;

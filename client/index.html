@@ -6,6 +6,13 @@
     <meta name="theme-color" content="#0b1020" />
     <title>Astra Legion</title>
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+    <!-- pasang dari browser: Android/desktop membaca manifest, iPhone/iPad membaca tag apple-* -->
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Astra Legion" />
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/ui.css" />
     <link rel="stylesheet" href="./src/account.css" />
@@ -38,8 +45,12 @@
     <!-- LOBBY -->
     <div id="lobby" class="hidden">
       <div id="account-bar">
-        <button id="profile-btn" title="Profil"><span class="lv" id="acc-level">1</span><span id="acc-name">Tamu</span></button>
+        <button id="profile-btn" title="Profil"><span class="lv" id="acc-level">1</span><span id="acc-name">Tamu</span><span id="acc-tier"></span></button>
         <button id="rank-btn" title="Papan peringkat pemain">&#127942;<span>Peringkat</span></button>
+        <button id="friends-btn" title="Daftar teman">
+          <svg class="fr-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4" /><path d="M1.5 20v-1.5C1.5 15.5 5 14 9 14s7.5 1.5 7.5 4.5V20z" /><circle cx="17.5" cy="8.5" r="3" /><path d="M18.5 20v-1.7c0-1.600-.7-2.900-1.900-3.900 3 .2 5.900 1.400 5.900 3.900V20z" /></svg>
+          <span>Teman</span><i id="friends-badge" class="hidden"></i>
+        </button>
         <button id="settings-btn" title="Pengaturan">&#9881;<span>Pengaturan</span></button>
       </div>
       <div class="lobby-box">
@@ -64,6 +75,11 @@
           <button id="invite-btn" type="button" title="Salin tautan undangan ke room ini">Undang teman</button>
           <div class="seg" id="spell-pick" title="Mantra tempur: kemampuan tambahan di luar skill hero"></div>
           <div class="seg" id="bot-pick" title="Tingkat kesulitan bot"></div>
+        </div>
+        <div class="lobby-row lobby-opts">
+          <div class="seg" id="mode-pick" title="Mode pertandingan"></div>
+          <div class="seg" id="talent-pick" title="Talenta: satu bonus kecil yang berlaku sepanjang pertandingan"></div>
+          <button id="train-btn" type="button" title="Latihan bebas (offline): atur level dan emas, boneka sasaran, hentikan bot; hasilnya tidak dicatat">🛠 Latihan bebas</button>
         </div>
         <div id="room-hint"></div>
         <div id="conn-status">Menghubungkan ke server…</div>
@@ -183,12 +199,19 @@
       </div>
     </div>
 
-    <!-- JENDELA (pengaturan, profil) -->
+    <!-- JENDELA (pengaturan, profil, peringkat, teman) -->
     <div id="modal" class="hidden">
       <div class="modal-box">
         <div class="modal-head"><b id="modal-title"></b><button id="modal-close">&times;</button></div>
         <div id="modal-body"></div>
       </div>
+    </div>
+
+    <!-- UNDANGAN DARI TEMAN (hanya tampil di lobby) -->
+    <div id="invite-toast" class="hidden" role="alert">
+      <span id="invite-text"></span>
+      <button id="invite-join" type="button">Gabung</button>
+      <button id="invite-decline" type="button">Tolak</button>
     </div>
 
     <script type="module" src="./src/main.ts"></script>

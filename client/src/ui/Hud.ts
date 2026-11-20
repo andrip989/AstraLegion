@@ -16,7 +16,10 @@ import {
   RECALL_TIME,
   SELL_REFUND,
   SKILL_KEYS,
+  GAME_MODES,
   TEAM_NAMES,
+  TITAN_PITS,
+  TITAN_WARN,
   ULT_UNLOCK_LEVEL,
   nextRecommended,
   type GameEvent,
@@ -42,10 +45,14 @@ const TIPS = [
     ? 'Emas didapat dari menghabisi minion. Saat cukup, tombol Rekomendasi menyala: ketuk untuk langsung membeli item.'
     : 'Emas didapat dari menghabisi minion. Saat cukup, tombol Rekomendasi menyala: klik (atau tekan G) untuk langsung membeli item.',
   IS_TOUCH ? 'HP menipis? Ketuk tombol rumah untuk pulang ke base dan pulih.' : 'HP menipis? Tekan B untuk pulang ke base dan pulih.',
-  'Kalahkan Golem di tengah jungle untuk Berkah Golem: +20% damage selama 75 detik.',
+  'Dua golem besar di hutan memberi berkah berbeda: Golem Rimba (sarang atas) +20% damage, Golem Arus (sarang bawah) mana pulih cepat dan cooldown lebih pendek.',
+  'Titan Astra bangkit di menit ke-4 (lihat penghitung di samping jam). Tim yang menumbangkannya dapat Berkah Titan dan Raksasa Astra pendorong lane. Menghindarlah dari lingkaran merahnya!',
   IS_TOUCH
     ? 'Tombol 💬 untuk mengobrol (pilih Tim atau Semua). Tombol 📣 berisi pesan cepat untuk tim dan emote.'
     : 'Enter untuk mengobrol dengan tim, Shift+Enter dengan semua pemain. V berisi pesan cepat untuk tim dan emote.',
+  IS_TOUCH
+    ? 'Peta di luar jarak pandang timmu tertutup kabut: lawan di sana tidak terlihat. Tombol mata menanam suar yang menyingkap sekitarnya selama 75 detik.'
+    : 'Peta di luar jarak pandang timmu tertutup kabut: lawan di sana tidak terlihat. Tekan T untuk menanam suar yang menyingkap sekitarnya selama 75 detik.',
   'Bersembunyilah di semak lebat: lawan di luar semak tidak melihatmu sampai kamu menyerang atau mereka ikut masuk.',
   'Hancurkan tower satu per satu, lalu Core musuh, untuk menang.',
 ];
@@ -87,6 +94,10 @@ interface SkillEl {
   cdt: HTMLElement;
 }
 
+/** Ikon tombol Suar: mata dengan sinar. */
+const WARD_ICON =
+  '<svg class="ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17c4-6.500 8.500-9.500 13-9.500S25 10.500 29 17c-4 6.500-8.500 9.500-13 9.500S7 23.500 3 17z" fill="none" stroke="currentColor" stroke-width="2.400"/><circle cx="16" cy="17" r="4.200" fill="currentColor"/><path d="M16 1.500v3M8 3.500l1.500 2.600M24 3.500l-1.500 2.600" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
 export interface HudActions {
   cast(slot: number): void;
   buy(item: string): void;
@@ -99,6 +110,12 @@ export interface HudActions {
   ping(kind: number): void;
   /** Tampilkan emote di atas kepala hero sendiri (indeks di EMOTES). */
   emote(kind: number): void;
+  /** Tanam suar penglihatan (tombol layar). */
+  ward(): void;
+  /** Pakai kemampuan aktif item di slot ini. */
+  useItem(slot: number): void;
+  /** Ajukan menyerah untuk tim sendiri, atau beri suara pada pemungutan yang berjalan (false = menolak). */
+  surrender(vote: boolean): void;
   /** Lempar mantra tempur (tombol layar). */
   spell(): void;
   /** Tinggalkan pertandingan dan kembali ke lobby (untuk ganti hero, skin, atau room). */
@@ -144,6 +161,14 @@ export class Hud {
   private selfTeam = 0;
   private announcing = false;
   private announceQueue: [string, string, string, VoiceLine?][] = [];
+  private voteTimer = 0;
+  /** Sisa waktu pertandingan (mode berbatas waktu), -1 = tidak dibatasi; dan mode yang sudah ditulis di lencana. */
+  private timeLeft = -1;
+  private mode = '';
+  private wardCd: number | undefined = -1;
+  private itemCdKey = '';
+  /** Isi chip buff terakhir yang digambar (supaya DOM hanya diubah saat angkanya berganti). */
+  private buffKey = '';
   /** Fase hari terakhir yang ditampilkan ('' = belum ada). */
   private phase: DayPhase | '' = '';
   /** Id semua tower (dari data statis), untuk mengenali serangan tower ke hero sendiri. */
@@ -172,6 +197,14 @@ export class Hud {
     const shopBtn = $('shop-btn');
     shopBtn.innerHTML = `${SHOP_ICON}<span>P</span>`;
     shopBtn.addEventListener('click', () => this.toggleShop());
+    // tombol Suar (kabut perang): dibuat di sini, muncul hanya bila server mendukungnya
+    const wardBtn = document.createElement('button');
+    wardBtn.id = 'ward-btn';
+    wardBtn.className = 'hidden';
+    wardBtn.title = 'Suar (T): tanam titik penglihatan untuk menyingkap kabut';
+    wardBtn.innerHTML = `${WARD_ICON}<span>T</span><b class="cd"></b>`;
+    wardBtn.addEventListener('click', () => this.actions.ward());
+    $('side-btns').appendChild(wardBtn);
     const recallBtn = $('recall-btn');
     recallBtn.innerHTML = `${RECALL_ICON}<span>B</span>`;
     recallBtn.addEventListener('click', () => this.actions.recall());
@@ -181,6 +214,18 @@ export class Hud {
       this.boardPinned = !this.boardPinned;
       this.showScoreboard(this.boardPinned);
     });
+    // tombol Bisukan di papan skor (papan digambar ulang terus, jadi kliknya ditangkap di wadahnya)
+    for (const id of ['scoreboard', 'gameover-board']) {
+      $(id).addEventListener('click', (e) => {
+        const name = (e.target as HTMLElement).closest<HTMLElement>('[data-mute]')?.dataset.mute;
+        if (!name) return;
+        if (!this.muted.delete(name)) this.muted.add(name);
+        sound.play('click');
+        this.feed(this.muted.has(name) ? `${name} dibisukan: obrolan, pesan cepat, dan emotenya disembunyikan.` : `${name} tidak lagi dibisukan.`);
+        if (this.boardOpen) this.renderScoreboard();
+        (e.target as HTMLElement).closest<HTMLElement>('[data-mute]')!.textContent = this.muted.has(name) ? 'Dibisukan' : 'Bisukan';
+      });
+    }
     $('quickbuy').addEventListener('click', () => this.quickBuy());
     $('tip-close').addEventListener('click', () => this.endTips());
     // pesan cepat ke tim: menu enam pesan siap pakai (tombol, tombol V, lalu angka 1-6)
@@ -204,6 +249,37 @@ export class Hud {
       emotes.appendChild(b);
     });
     pingMenu.appendChild(emotes);
+    // menyerah: ketuk dua kali (yang pertama hanya meminta kepastian), lalu tim memungut suara
+    const giveUp = document.createElement('button');
+    giveUp.className = 'surrender';
+    giveUp.textContent = '⚑ Menyerah';
+    let armed = 0;
+    giveUp.addEventListener('click', () => {
+      if (performance.now() - armed > 4000) {
+        armed = performance.now();
+        giveUp.textContent = 'Yakin menyerah? Ketuk lagi';
+        setTimeout(() => (giveUp.textContent = '⚑ Menyerah'), 4000);
+        return;
+      }
+      armed = 0;
+      giveUp.textContent = '⚑ Menyerah';
+      this.actions.surrender(true);
+      this.togglePing(false);
+    });
+    pingMenu.appendChild(giveUp);
+    // panel pemungutan suara menyerah dan pemberitahuan bot pengganti
+    const vote = document.createElement('div');
+    vote.id = 'vote';
+    vote.className = 'hidden';
+    vote.innerHTML = '<span id="vote-text"></span><button id="vote-yes" type="button">Setuju</button><button id="vote-no" type="button">Tolak</button>';
+    $('hud').appendChild(vote);
+    vote.querySelector('#vote-yes')!.addEventListener('click', () => this.actions.surrender(true));
+    vote.querySelector('#vote-no')!.addEventListener('click', () => this.actions.surrender(false));
+    const idle = document.createElement('div');
+    idle.id = 'afk-note';
+    idle.className = 'hidden';
+    idle.textContent = IS_TOUCH ? 'Bot menggantikanmu karena kamu diam. Gerakkan joystick untuk bermain lagi.' : 'Bot menggantikanmu karena kamu diam. Klik atau tekan tombol skill untuk bermain lagi.';
+    $('hud').appendChild(idle);
     $('ping-btn').addEventListener('click', () => this.togglePing());
     $('gameover-lobby').addEventListener('click', () => this.actions.toLobby());
     $('spectate-btn').addEventListener('click', () => this.nextSpectate());
@@ -211,6 +287,14 @@ export class Hud {
     const recap = document.createElement('div');
     recap.id = 'respawn-recap';
     $('respawn').insertBefore(recap, $('spectate-btn'));
+    // penghitung Titan Astra di bar atas, dan chip buff di atas panel hero
+    const chip = document.createElement('span');
+    chip.id = 'titan-chip';
+    chip.title = 'Titan Astra: boss di sarang golem. Tim penakluknya mendapat Berkah Titan dan Raksasa Astra.';
+    $('topbar').appendChild(chip);
+    const buffs = document.createElement('div');
+    buffs.id = 'buffs';
+    $('hud').appendChild(buffs);
     const warn = document.createElement('div');
     warn.id = 'tower-warn';
     warn.className = 'hidden';
@@ -625,14 +709,20 @@ export class Hud {
       const el = document.createElement('div');
       el.className = def ? 'item' : 'item empty';
       if (def) {
-        el.innerHTML = itemIcon(def.id);
+        // item aktif: nomor tombolnya di pojok, dan lapisan jeda yang diisi tiap pembaruan (lihat update)
+        el.innerHTML = itemIcon(def.id) + (def.active ? `<small class="key">${i + 1}</small><b class="cd"></b>` : '');
+        if (def.active) el.classList.add('usable');
         const refund = Math.floor(def.cost * SELL_REFUND);
-        el.addEventListener('pointerenter', () => this.tip(`<b>${def.name}</b><br>${def.desc}<br><small>Klik saat toko terbuka untuk menjual (+${refund} emas)</small>`));
+        const how = def.active ? (IS_TOUCH ? 'Ketuk untuk memakai. ' : `Klik atau tekan ${i + 1} untuk memakai. `) : '';
+        el.addEventListener('pointerenter', () => this.tip(`<b>${def.name}</b><br>${def.desc}<br><small>${how}Klik saat toko terbuka untuk menjual (+${refund} emas)</small>`));
         el.addEventListener('pointerleave', () => this.tip(null));
         el.addEventListener('click', () => {
-          if (!this.shopOpen || !this.canShop) return;
-          this.actions.sell(i);
-          sound.play('coin');
+          if (this.shopOpen && this.canShop) {
+            this.actions.sell(i);
+            sound.play('coin');
+          } else if (def.active && !this.shopOpen) {
+            this.actions.useItem(i);
+          }
         });
       }
       box.appendChild(el);
@@ -694,6 +784,23 @@ export class Hud {
    * Tabel kedua tim: level, KDA, damage ke hero lawan, emas, item. `winner` (tim pemenang, di
    * layar akhir pertandingan) menandai MVP: pemain tim itu dengan kontribusi tertinggi.
    */
+  /** Nama pemain yang dibisukan di perangkat ini (sampai halaman dimuat ulang). */
+  private muted = new Set<string>();
+
+  get hasMuted(): boolean {
+    return this.muted.size > 0;
+  }
+
+  /** Peristiwa ini berasal dari pemain yang dibisukan? (obrolan, pesan cepat, emote) */
+  isMuted(e: GameEvent): boolean {
+    if (e.k === 'chat' || e.k === 'ping') return this.muted.has(e.name);
+    if (e.k === 'emote') {
+      const who = this.heroes.find((h) => h.id === e.a);
+      return !!who && this.muted.has(who.name);
+    }
+    return false;
+  }
+
   private boardHtml(winner: number | null): string {
     // kill dan assist dihargai, mati mengurangi, damage ke hero lawan menambah
     const score = (h: HeroInfo) => h.k * 3 + h.a * 1.5 - h.d * 1.2 + (h.dd ?? 0) / 400;
@@ -704,8 +811,11 @@ export class Hud {
     const row = (h: HeroInfo) => {
       const def = HEROES[h.def];
       const items = (h.items ?? []).map((id) => `<i>${itemIcon(id)}</i>`).join('');
+      // pemain manusia lain bisa dibisukan (obrolan, pesan cepat, dan emotenya disembunyikan di perangkat ini)
+      const muted = this.muted.has(h.name);
+      const mute = h.bot || h.id === this.me?.id ? '' : ` <button type="button" class="mute${muted ? ' on' : ''}" data-mute="${esc(h.name)}" title="${muted ? 'Tampilkan lagi obrolan pemain ini' : 'Sembunyikan obrolan, pesan cepat, dan emote pemain ini'}">${muted ? 'Dibisukan' : 'Bisukan'}</button>`;
       return `<tr class="${h.id === this.me?.id ? 'me' : ''}${!final && h.respawn > 0 ? ' dead' : ''}">
-        <td class="lv">${h.level}</td><td class="nm">${esc(h.name)}${h.bot ? ' <small>bot</small>' : ''}${h === mvp ? ' <b class="mvp">MVP</b>' : ''}</td><td class="hr">${def?.name ?? h.def}</td>
+        <td class="lv">${h.level}</td><td class="nm">${esc(h.name)}${h.bot ? ' <small>bot</small>' : ''}${h === mvp ? ' <b class="mvp">MVP</b>' : ''}${mute}</td><td class="hr">${def?.name ?? h.def}</td>
         <td class="kda">${h.k} / ${h.d} / ${h.a}</td>${stats ? `<td class="num">${num(h.dd)}</td><td class="num gold">${num(h.ge)}</td>` : ''}
         <td class="its">${items}</td>${final ? '' : `<td>${h.respawn > 0 ? `${h.respawn}s` : ''}</td>`}</tr>`;
     };
@@ -780,6 +890,31 @@ export class Hud {
         this.onKill(e);
       } else if (e.k === 'chat') {
         this.addChat(e);
+      } else if (e.k === 'vote') {
+        const box = $('vote');
+        if (e.done) {
+          box.classList.add('hidden');
+          if (e.done === 'fail') this.feed('Pemungutan suara menyerah tidak lolos.');
+        } else {
+          $('vote-text').textContent = `${e.by} mengajukan menyerah · ${e.yes}/${e.need} setuju · ${e.left} dtk`;
+          if (box.classList.contains('hidden')) {
+            box.classList.remove('hidden');
+            sound.play('ping');
+          }
+          clearTimeout(this.voteTimer);
+          this.voteTimer = window.setTimeout(() => box.classList.add('hidden'), (e.left + 1) * 1000);
+        }
+      } else if (e.k === 'titan') {
+        const pit = TITAN_PITS[e.pit]?.name ?? 'sarangnya';
+        if (e.s === 'soon') {
+          this.feed(`Titan Astra bangkit ${TITAN_WARN} detik lagi di ${pit}.`);
+          sound.play('ping');
+        } else if (e.s === 'spawn') {
+          this.announce('TITAN BANGKIT', `Titan Astra muncul di ${pit}`, 'info', 'titan');
+        } else {
+          const mine = e.team === y.team;
+          this.announce('TITAN TUMBANG', mine ? 'Timmu mendapat Berkah Titan dan Raksasa Astra' : 'Tim lawan mendapat Berkah Titan dan Raksasa Astra', mine ? 'good' : 'bad', 'titan_slain');
+        }
       } else if (e.k === 'alert') {
         this.feed(e.core ? '⚠ Core kita diserang!' : '⚠ Tower kita diserang!');
         sound.play('ping');
@@ -854,6 +989,21 @@ export class Hud {
     if (key !== this.itemsKey) {
       this.itemsKey = key;
       this.renderItems(this.items);
+      this.itemCdKey = '?'; // slot digambar ulang: jeda item aktif ditulis lagi
+    }
+    // jeda item aktif: angka detik di atas slotnya
+    const cds = y.itemCds;
+    const cdKey = cds ? cds.join(',') : '';
+    if (cdKey !== this.itemCdKey) {
+      this.itemCdKey = cdKey;
+      const slots = $('items').children;
+      for (let i = 0; i < slots.length; i++) {
+        const cd = slots[i].querySelector('.cd');
+        if (!cd) continue;
+        const left = cds?.[i] ?? 0;
+        cd.textContent = left > 0 ? String(left) : '';
+        slots[i].classList.toggle('waiting', left > 0);
+      }
     }
     $('shop-btn').classList.toggle('ready', (this.buyAnywhere || this.canShop) && this.items.length < MAX_ITEMS && ITEM_LIST.some((it) => it.cost <= y.gold));
     if (this.shopOpen) this.refreshShop();
@@ -868,12 +1018,48 @@ export class Hud {
     $('channel').classList.toggle('hidden', !recalling);
     if (recalling) $('channel-fill').style.width = `${Math.min(100, ((performance.now() - this.recallStart) / (RECALL_TIME * 1000)) * 100)}%`;
 
+    // Titan Astra: hitung mundur sampai bangkit, atau tanda sedang hidup
+    if (s.titan) {
+      const [wait, pit] = s.titan;
+      const text = wait > 0 ? `◆ ${Math.floor(wait / 60)}:${String(wait % 60).padStart(2, '0')}` : IS_TOUCH ? '◆ Titan' : `◆ Titan · ${TITAN_PITS[pit]?.name ?? ''}`;
+      const chip = $('titan-chip');
+      if (chip.textContent !== text) chip.textContent = text;
+      chip.classList.toggle('alive', wait === 0);
+      chip.classList.toggle('soon', wait > 0 && wait <= TITAN_WARN);
+    }
+    $('afk-note').classList.toggle('hidden', !y.afk || s.over !== null);
+    // suar: tombolnya hanya ada bila server memakai kabut perang; angkanya sisa jeda
+    if (y.ward !== this.wardCd) {
+      this.wardCd = y.ward;
+      const btn = $('ward-btn');
+      btn.classList.toggle('hidden', y.ward === undefined);
+      btn.classList.toggle('waiting', !!y.ward);
+      btn.querySelector('.cd')!.textContent = y.ward ? String(y.ward) : '';
+    }
+    // buff yang sedang dibawa hero sendiri
+    const buffKey = `${y.golem ?? 0}|${y.flow ?? 0}|${y.titan ?? 0}`;
+    if (buffKey !== this.buffKey) {
+      this.buffKey = buffKey;
+      $('buffs').innerHTML =
+        (y.titan ? `<span class="titan" title="Berkah Titan: +15% damage, +15% lagi ke tower dan core">◆ Berkah Titan <b>${y.titan}</b></span>` : '') +
+        (y.golem ? `<span class="golem" title="Berkah Golem: +20% damage">◆ Berkah Golem <b>${y.golem}</b></span>` : '') +
+        (y.flow ? `<span class="flow" title="Berkah Arus: mana pulih cepat, cooldown skill 20% lebih pendek">◆ Berkah Arus <b>${y.flow}</b></span>` : '');
+    }
+
     // topbar
     $('score-blue').textContent = String(s.score[0]);
     $('score-red').textContent = String(s.score[1]);
     const t = Math.floor(s.t);
     const phase = dayPhase(s.t);
-    $('clock').textContent = `${PHASE_LABEL[phase].icon} ${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    // mode berbatas waktu (Kilat): jam menghitung mundur sisa waktunya, memerah di 30 detik terakhir
+    if (s.left !== undefined) this.timeLeft = s.left;
+    if (s.mode !== undefined && s.mode !== this.mode) {
+      this.mode = s.mode;
+      $('mode-badge').textContent += ` · ${GAME_MODES[s.mode].name.toUpperCase()}`;
+    }
+    const shown = this.timeLeft >= 0 ? this.timeLeft : t;
+    $('clock').textContent = `${this.timeLeft >= 0 ? '⏱' : PHASE_LABEL[phase].icon} ${String(Math.floor(shown / 60)).padStart(2, '0')}:${String(shown % 60).padStart(2, '0')}`;
+    $('clock').classList.toggle('ending', this.timeLeft >= 0 && this.timeLeft <= 30);
     if (phase !== this.phase) {
       // pergantian fase diumumkan sekali; saat baru masuk match tidak perlu
       if (this.phase) this.feed(PHASE_LABEL[phase].text);
