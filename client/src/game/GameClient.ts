@@ -59,6 +59,7 @@ export class GameClient {
     this.fog = new FogOfWar(this.sm.scene);
     this.sounds = new GameSounds(this.views);
     this.views.onFootstep = (x, z) => this.fx.dust(x, z);
+    this.views.onHurt = (v, amount) => this.fx.hurt(v, amount);
     this.views.onDeath = (v) => {
       this.fx.death(v);
       this.sounds.death(v);

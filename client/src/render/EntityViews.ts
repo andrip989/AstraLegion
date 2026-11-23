@@ -274,6 +274,8 @@ export class EntityViews {
   onFootstep: ((x: number, z: number) => void) | null = null;
   /** Dipanggil saat unit tewas/hancur (untuk efek ledakan, asap, dsb.). */
   onDeath: ((v: View) => void) | null = null;
+  /** Unit kehilangan HP sebanyak `amount` (dari snapshot); untuk percikan darah. */
+  onHurt: ((v: View, amount: number) => void) | null = null;
   private seq = 0;
   private infos = new Map<number, HeroInfo>();
   private dying = new Set<number>();
@@ -330,7 +332,10 @@ export class EntityViews {
       v.x = e[1];
       v.z = e[2];
       v.rot = e[3];
-      if (!first && e[4] < v.hp) v.hit = 1;
+      if (!first && e[4] < v.hp) {
+        v.hit = 1;
+        this.onHurt?.(v, v.hp - e[4]);
+      }
       v.hp = e[4];
       v.maxHp = e[5];
       v.flags = e[6];

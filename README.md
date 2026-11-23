@@ -93,6 +93,7 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
   room kecil. Bisa digabung dengan mode Kilat.
 - **Grafik emas di layar akhir**: emas yang dikumpulkan kedua tim sepanjang pertandingan (satu
   titik tiap 15 detik), dikirim server setelah pertandingan selesai.
+- **Efek serangan lucu dan percikan darah**: tembakan hero berupa bintang berputar dengan jejak kilau, laser skill ditaburi bintang, pukulan hero kadang memunculkan tulisan komik ("POW!", "BOK!"). Unit yang terkena serangan memercikkan darah bergaya kartun dan meninggalkan genangan kecil yang memudar (monster batu berdarah jingga; bangunan hanya berdebu). Percikan darah bisa dimatikan di Pengaturan.
 - **Bisukan pemain**: tombol Bisukan di papan skor menyembunyikan obrolan, pesan cepat, dan emote
   dari satu pemain di perangkat sendiri (sampai halaman dimuat ulang).
 - **Pasang dari browser**: versi web punya manifest dan ikon sendiri

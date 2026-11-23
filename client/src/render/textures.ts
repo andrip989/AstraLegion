@@ -424,6 +424,68 @@ function dotTexture(size: number, power: number): THREE.CanvasTexture {
   return canvasTexture(c, true, false);
 }
 
+/** Gambar bentuk putih di canvas (bentuknya dari `draw`), untuk sprite dan partikel bertepi tegas. */
+function shapeTexture(size: number, draw: (ctx: CanvasRenderingContext2D, s: number) => void): THREE.CanvasTexture {
+  const [c, ctx] = newCanvas(size);
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#fff';
+  draw(ctx, size);
+  return canvasTexture(c, true, false);
+}
+
+/** Bintang lima sudut membulat dengan pinggiran sedikit pudar (proyektil lucu). */
+function starTexture(size: number): THREE.CanvasTexture {
+  return shapeTexture(size, (ctx, s) => {
+    const cx = s / 2;
+    const cy = s / 2 + s * 0.03;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = (i % 2 ? 0.2 : 0.46) * s;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = s * 0.08;
+    ctx.shadowColor = 'rgba(255,255,255,0.8)';
+    ctx.shadowBlur = s * 0.06;
+    ctx.fill();
+    ctx.stroke();
+  });
+}
+
+/** Tetes bulat bertepi tegas dengan kilau kecil (darah kartun). */
+function dropTexture(size: number): THREE.CanvasTexture {
+  return shapeTexture(size, (ctx, s) => {
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+/** Genangan percikan di tanah: bulatan besar dengan beberapa tetes di sekelilingnya. */
+function splatTexture(size: number): THREE.CanvasTexture {
+  return shapeTexture(size, (ctx, s) => {
+    const blob = (x: number, y: number, r: number) => {
+      ctx.beginPath();
+      ctx.arc(x * s, y * s, r * s, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    blob(0.5, 0.5, 0.22);
+    blob(0.38, 0.44, 0.13);
+    blob(0.62, 0.56, 0.12);
+    blob(0.5, 0.64, 0.1);
+    // tetes yang terlempar
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+    for (let i = 0; i < 9; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = 0.28 + rnd() * 0.17;
+      blob(0.5 + Math.cos(a) * d, 0.5 + Math.sin(a) * d, 0.02 + rnd() * 0.035);
+    }
+  });
+}
+
 /** Kepulan asap: gumpalan noise yang memudar ke tepi. */
 function smokeTexture(size: number): THREE.CanvasTexture {
   const n = makeNoise(613);
@@ -486,6 +548,12 @@ export const Tex = {
   /** Kilau berinti tajam. */
   spark: () => memo('spark', () => dotTexture(64, 3.2)),
   smoke: () => memo('smoke', () => smokeTexture(128)),
+  /** Bintang bulat untuk proyektil dan kilau lucu. */
+  star: () => memo('star', () => starTexture(64)),
+  /** Tetes bertepi tegas (darah kartun). */
+  drop: () => memo('drop', () => dropTexture(32)),
+  /** Genangan percikan di tanah. */
+  splat: () => memo('splat', () => splatTexture(128)),
   /** Cincin tipis dengan pendar ke dalam: gelombang kejut. */
   shock: () =>
     memo('shock', () => radialTexture(256, (r) => (r > 1 ? 0 : Math.pow(band(r, 0.9, 0.1), 1.5) + 0.35 * smooth(0.25, 0.9, r) * (1 - smooth(0.9, 1, r))))),

@@ -8,6 +8,7 @@ import { Particles } from './particles';
 import { GFX, pick } from './quality';
 import { OVERLAY_LAYER, type SceneManager } from './SceneManager';
 import { Tex } from './textures';
+import { settings } from '../settings';
 
 interface Fx {
   obj: THREE.Object3D;
@@ -57,6 +58,15 @@ export class Effects {
   private glow: Particles;
   /** Asap & debu (alpha biasa). */
   private smoke: Particles;
+  /** Tetes darah kartun (alpha biasa, tepi tegas). */
+  private blood: Particles;
+  /** Kilau bintang (additive) untuk jejak proyektil dan letupan lucu. */
+  private stars: Particles;
+  /** Genangan darah di tanah yang masih memudar (dibatasi supaya tidak menumpuk). */
+  private splats = 0;
+  /** Teks letupan komik yang sudah dibuat. */
+  private comicTex = new Map<string, THREE.Texture>();
+  private comicSide = 1;
   /** Pengali jumlah partikel menurut kualitas grafik. */
   private density = pick(0.5, 1, 1.7);
   /** Sisa umur tiap lampu efek (lihat SceneManager.fxLights) dan intensitas awalnya. */
@@ -71,7 +81,9 @@ export class Effects {
   ) {
     this.glow = new Particles(pick(600, 1600, 3600), Tex.spark(), true);
     this.smoke = new Particles(pick(160, 420, 800), Tex.smoke(), false);
-    sm.scene.add(this.smoke.object, this.glow.object);
+    this.blood = new Particles(pick(220, 500, 900), Tex.drop(), false);
+    this.stars = new Particles(pick(200, 450, 900), Tex.star(), true);
+    sm.scene.add(this.smoke.object, this.blood.object, this.glow.object, this.stars.object);
     this.lightLife = sm.fxLights.map(() => ({ life: 0, max: 1, power: 0 }));
   }
 
@@ -299,6 +311,135 @@ export class Effects {
     if (strong) this.flash(x, y, z, 1.7, color, 1.4, 0.14);
   }
 
+/**
+   * Unit terluka: percikan darah kartun (tetes merah cerah yang terlempar dan jatuh, kadang
+   * meninggalkan genangan kecil di tanah). Bangunan tidak berdarah; mereka memuntahkan serpihan.
+   * Bisa dimatikan di Pengaturan.
+   */
+  hurt(v: View, amount: number): void {
+    if (!settings.blood || v.ghost) return;
+    const p = v.root.position;
+    const building = v.st.kind === 'tower' || v.st.kind === 'core';
+    if (building) {
+      if (amount >= 40) this.puffs(p.x, 1.5, p.z, 2, 0.8, 0.9, [0.62, 0.6, 0.58], 0.3, 0.6);
+      return;
+    }
+    if (v.st.kind === 'ward') return;
+    // sebanyak apa: dari besar damage terhadap HP maksimumnya
+    const frac = Math.min(1, amount / Math.max(1, v.maxHp));
+    const big = v.st.kind === 'hero' || v.st.kind === 'monster';
+    const n = Math.round((big ? 12 : 7) + frac * 60);
+    const y = Math.min(1.6, v.height * 0.55);
+    // monster batu (golem, Titan) berdarah jingga menyala, sisanya merah
+    const lava = v.st.kind === 'monster' && v.st.sub !== 'small';
+    const r = lava ? 1 : 0.86;
+    const g = lava ? 0.42 : 0.05;
+    const b = lava ? 0.12 : 0.1;
+    for (let i = 0, m = Math.max(2, Math.round(n * this.density)); i < m; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const s = rand(1.6, 4.8);
+      this.blood.spawn({
+        x: p.x + rand(-0.15, 0.15),
+        y: y + rand(-0.2, 0.25),
+        z: p.z + rand(-0.15, 0.15),
+        vx: Math.cos(ang) * s,
+        vy: rand(2.2, 5.5),
+        vz: Math.sin(ang) * s,
+        life: rand(0.45, 0.8),
+        size: rand(0.16, 0.32) * (big ? 1.2 : 0.95),
+        size1: rand(0.05, 0.1),
+        r,
+        g,
+        b,
+        drag: 0.6,
+        gravity: 16,
+      });
+    }
+    // genangan kecil di tanah untuk pukulan yang cukup keras
+    if (frac > 0.04 && this.splats < pick(6, 14, 24)) this.splat(p.x + rand(-0.4, 0.4), p.z + rand(-0.4, 0.4), 0.55 + frac * 2.2, lava ? 0xff7a2a : 0xb3121e);
+  }
+
+  /** Genangan percikan di tanah yang memudar dalam beberapa detik. */
+  private splat(x: number, z: number, r: number, color: number): void {
+    const mat = new THREE.MeshBasicMaterial({ map: Tex.splat(), color, transparent: true, depthWrite: false, toneMapped: false, opacity: 0.85 });
+    const disc = new THREE.Mesh(FLAT, mat);
+    disc.position.set(x, 0.06, z);
+    disc.rotation.y = Math.random() * Math.PI * 2;
+    disc.renderOrder = 2;
+    this.splats++;
+    this.add(disc, 3.2, (t) => {
+      // muncul cepat, bertahan, lalu memudar
+      disc.scale.setScalar(r * Math.min(1, t * 9));
+      mat.opacity = 0.85 * (t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35);
+      if (t >= 1) this.splats--;
+    });
+  }
+
+  /** Letupan kilau bintang kecil di satu titik. */
+  private starBurst(x: number, y: number, z: number, color: number, count: number, speed: number, size = 0.3): void {
+    const c = glowColor(color, 1.6);
+    for (let i = 0, n = Math.max(1, Math.round(count * this.density)); i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const s = speed * rand(0.4, 1);
+      this.stars.spawn({ x, y, z, vx: Math.cos(ang) * s, vy: rand(0.5, 1.4) * speed * 0.6, vz: Math.sin(ang) * s, life: rand(0.35, 0.6), size: size * rand(0.7, 1.3), size1: size * 0.25, r: c.r, g: c.g, b: c.b, drag: 2.4, gravity: 4 });
+    }
+  }
+
+  /** Tulisan komik ("POW!", "BOK!") yang meletup di atas sasaran. */
+  private comic(x: number, y: number, z: number, color: number): void {
+    const words = ['POW!', 'BOK!', 'DUAK!', 'BAM!', 'PLAK!', 'ZAP!'];
+    const text = words[Math.floor(Math.random() * words.length)];
+    const hex = '#' + color.toString(16).padStart(6, '0');
+    const key = text + hex;
+    let tex = this.comicTex.get(key);
+    if (!tex) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 160;
+      canvas.height = 80;
+      const ctx = canvas.getContext('2d')!;
+      // gelembung letupan bergerigi
+      ctx.beginPath();
+      for (let i = 0; i < 18; i++) {
+        const r = i % 2 ? 26 : 38;
+        const a = (i / 18) * Math.PI * 2;
+        ctx.lineTo(80 + Math.cos(a) * r * 1.7, 40 + Math.sin(a) * r * 0.95);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#fff6c2';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#1a1206';
+      ctx.stroke();
+      ctx.font = '900 34px "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#1a1206';
+      ctx.strokeText(text, 80, 42, 140);
+      ctx.fillStyle = hex;
+      ctx.fillText(text, 80, 42, 140);
+      tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.comicTex.set(key, tex);
+    }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, toneMapped: false }));
+    // di samping sasaran setinggi dada (bukan di atas kepala, tempat nama dan bar HP), bergantian kiri/kanan
+    this.comicSide = -this.comicSide;
+    sp.position.set(x + this.comicSide * rand(1.3, 1.7), y + 0.2, z + rand(0.2, 0.5));
+    sp.renderOrder = 9; // di bawah bar HP (10) dan label nama (12): keduanya tetap terbaca
+    sp.layers.set(OVERLAY_LAYER);
+    const tilt = rand(-0.35, 0.35);
+    this.add(sp, 0.6, (t) => {
+      // meletup besar lalu mengecil dan memudar
+      const pop = t < 0.15 ? t / 0.15 : 1 - (t - 0.15) * 0.25;
+      sp.scale.set(2 * pop, 1 * pop, 1);
+      sp.material.rotation = tilt;
+      sp.position.y += 0.012;
+      sp.material.opacity = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+    });
+  }
+
   /** Proyektil bercahaya dari a ke b; meninggalkan jejak dan meledak kecil saat tiba. */
   private projectile(a: THREE.Vector3, b: THREE.Vector3, color: number, size: number, big: boolean): void {
     const from = a.clone();
@@ -307,19 +448,24 @@ export class Effects {
     const life = Math.max(0.08, dist / (big ? 46 : 60));
     const c = glowColor(color, 1.8);
     const core = glowColor(0xffffff, 1.6);
-    const mat = glowMaterial(color, 2, 1, Tex.beam());
-    const bolt = new THREE.Group();
-    bolt.add(new THREE.Mesh(RIBBON_H, mat), new THREE.Mesh(RIBBON_V, mat));
-    bolt.scale.set(size * 1.6, size * 1.6, Math.min(dist, big ? 3.2 : 2.2));
+    // bintang lucu yang berputar dan melambung sedikit, dengan jejak kilau bintang kecil
+    const bolt = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: Tex.star(), color: glowColor(color, 1.5), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }),
+    );
+    bolt.scale.setScalar(size * (big ? 4.2 : 3.6));
     const pos = new THREE.Vector3();
+    const arc = Math.min(1.4, dist * 0.08);
+    const spin = rand(9, 14) * (Math.random() < 0.5 ? -1 : 1);
     this.add(bolt, life, (t) => {
       pos.lerpVectors(from, to, t);
+      pos.y += Math.sin(t * Math.PI) * arc;
       bolt.position.copy(pos);
-      bolt.lookAt(to);
-      this.glow.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 0.22, size: size * 2.4, size1: size * 0.5, r: c.r, g: c.g, b: c.b, alpha: 0.8 });
-      this.glow.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 0.08, size: size * 1.5, r: core.r, g: core.g, b: core.b });
+      bolt.material.rotation = t * spin;
+      this.glow.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 0.2, size: size * 2.2, size1: size * 0.4, r: c.r, g: c.g, b: c.b, alpha: 0.7 });
+      if (Math.random() < 0.6) this.stars.spawn({ x: pos.x, y: pos.y, z: pos.z, vx: rand(-0.6, 0.6), vy: rand(-0.4, 0.6), vz: rand(-0.6, 0.6), life: 0.32, size: size * 1.1, size1: size * 0.2, r: core.r, g: core.g, b: core.b });
       if (t >= 1) {
         this.hitSpark(to.x, to.y, to.z, color, big);
+        this.starBurst(to.x, to.y, to.z, color, big ? 7 : 4, big ? 5 : 3.5, 0.32);
         if (big) {
           this.shock(to.x, to.z, 1.6, color, 0.3, 1.2);
           this.light(to.x, 1.5, to.z, color, 26, 0.3);
@@ -710,7 +856,8 @@ export class Effects {
               const life = Math.max(0.1, this.a.distanceTo(this.b) / 34);
               const c = glowColor(color, 1.8);
               const d = this.b.clone().sub(this.a).divideScalar(life);
-              this.glow.spawn({ x: this.a.x, y: this.a.y, z: this.a.z, vx: d.x, vy: d.y, vz: d.z, life: life * 1.15, size: 0.55, size1: 0.4, r: c.r, g: c.g, b: c.b });
+              this.stars.spawn({ x: this.a.x, y: this.a.y, z: this.a.z, vx: d.x, vy: d.y, vz: d.z, life: life * 1.05, size: 0.5, size1: 0.42, r: c.r, g: c.g, b: c.b });
+              this.glow.spawn({ x: this.a.x, y: this.a.y, z: this.a.z, vx: d.x, vy: d.y, vz: d.z, life: life * 1.05, size: 0.7, size1: 0.5, r: c.r, g: c.g, b: c.b, alpha: 0.5 });
             }
           } else {
             // serangan jarak dekat: tebasan (hero & monster), lalu percikan di sasaran
@@ -718,7 +865,12 @@ export class Effects {
             if (strong) this.slash(a, color, a.st.kind === 'hero' ? 1.5 : 1.25);
             const tx = b.root.position.x;
             const tz = b.root.position.z;
-            this.after(0.16, () => this.hitSpark(tx + rand(-0.2, 0.2), ty, tz + rand(-0.2, 0.2), strong ? color : 0xfff0c8, strong));
+            this.after(0.16, () => {
+              this.hitSpark(tx + rand(-0.2, 0.2), ty, tz + rand(-0.2, 0.2), strong ? color : 0xfff0c8, strong);
+              if (strong) this.starBurst(tx, ty + 0.2, tz, 0xfff3a0, 5, 4, 0.3);
+              // tulisan komik: sesekali, dan hanya untuk pukulan hero (supaya tidak ramai)
+              if (hero && Math.random() < 0.35) this.comic(tx, ty, tz, color);
+            });
           }
           break;
         }
@@ -767,6 +919,12 @@ export class Effects {
                 drag: 1.5,
               });
             }
+            // taburan bintang lucu di sepanjang laser, dan letupan di ujungnya
+            for (let i = 0, n = Math.round(len * 0.7 * this.density); i < n; i++) {
+              const k = Math.random();
+              this.starBurst(e.x0 + (e.x1 - e.x0) * k, 1.3 + rand(-0.3, 0.4), e.z0 + (e.z1 - e.z0) * k, i % 3 ? e.c : 0xfff3a0, 1, 2.5, heavy ? 0.42 : 0.32);
+            }
+            this.starBurst(e.x1, 1.3, e.z1, 0xfff3a0, heavy ? 10 : 5, heavy ? 6 : 4, 0.38);
             this.shake(heavy ? 1.2 : 0.35);
           }
           break;
@@ -855,6 +1013,8 @@ export class Effects {
     this.auras(dt);
     this.glow.update(dt);
     this.smoke.update(dt);
+    this.blood.update(dt);
+    this.stars.update(dt);
     // lampu efek meredup sampai padam
     const lights = this.sm.fxLights;
     for (let i = 0; i < lights.length; i++) {

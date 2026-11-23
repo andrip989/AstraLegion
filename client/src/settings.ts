@@ -8,10 +8,12 @@ export interface Settings {
   /** Guncangan kamera saat ledakan besar. */
   shake: boolean;
   showFps: boolean;
+  /** Percikan darah kartun saat unit terkena serangan. */
+  blood: boolean;
 }
 
 const KEY = 'astra.settings.v1';
-const DEFAULTS: Settings = { master: 0.8, sfx: 0.8, music: 0.45, shake: true, showFps: false };
+const DEFAULTS: Settings = { master: 0.8, sfx: 0.8, music: 0.45, shake: true, showFps: false, blood: true };
 
 function load(): Settings {
   try {

@@ -117,7 +117,7 @@ export function openSettings(inGame: boolean, afterLogout: () => void, toLobby?:
      <h4>Suara</h4>
      ${slider('master', 'Volume utama')}${slider('sfx', 'Efek suara')}${slider('music', 'Musik')}
      <h4>Tampilan</h4>
-     ${toggle('shake', 'Guncangan kamera saat ledakan')}${toggle('showFps', 'Tampilkan FPS')}
+     ${toggle('shake', 'Guncangan kamera saat ledakan')}${toggle('blood', 'Percikan darah saat terkena serangan')}${toggle('showFps', 'Tampilkan FPS')}
      ${inGame && toLobby ? '<h4>Pertandingan</h4><div class="set-row"><span>Ganti hero, skin, mantra, atau room</span><button id="set-lobby">Kembali ke lobby</button></div>' : ''}
      ${
        inGame && acc && accounts.online && accounts.ranked
