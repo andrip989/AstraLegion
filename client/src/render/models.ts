@@ -40,7 +40,9 @@ function recolor(c: THREE.Color, skin: SkinDef): void {
   // warna pendar bisa lebih terang dari 1: kerjakan dalam rentang 0..1 lalu kembalikan
   const peak = Math.max(1, c.r, c.g, c.b);
   c.multiplyScalar(1 / peak).getHSL(hsl);
-  if (hsl.s > 0.16) c.setHSL((hsl.h + skin.hue + 1) % 1, Math.min(1, hsl.s * skin.sat), Math.min(1, hsl.l * skin.lum));
+  // warna kulit (jingga muda dan terang: wajah dan tangan) tidak ikut digeser, supaya wajah tetap berwarna kulit
+  const skinTone = hsl.h > 0.02 && hsl.h < 0.12 && hsl.l > 0.56 && hsl.s < 0.95;
+  if (hsl.s > 0.16 && !skinTone) c.setHSL((hsl.h + skin.hue + 1) % 1, Math.min(1, hsl.s * skin.sat), Math.min(1, hsl.l * skin.lum));
   else c.setHSL(hsl.h, hsl.s, Math.min(1, hsl.l * (1 + (skin.lum - 1) * 0.6)));
   c.multiplyScalar(peak);
 }
@@ -95,23 +97,23 @@ export function buildModel(st: EntityStatic): Built {
         const rig = buildGolem(model, siegeLook(st.team));
         model.scale.setScalar(1.25);
         model.userData.baseScale = 1.25;
-        return { model, height: 3.4 * 1.25, mats: [], rig };
+        return { model, height: 2.6 * 1.25, mats: [], rig };
       }
       if (st.sub === 'dummy') {
         // boneka sasaran (mode latihan)
         const rig = buildMinion(model, st.team, false);
         model.scale.setScalar(1.7);
         model.userData.baseScale = 1.7;
-        return { model, height: 1.75 * 1.7, mats: [], rig };
+        return { model, height: 1.55 * 1.7, mats: [], rig };
       }
       if (st.sub === 'super') {
         // minion super: model minion biasa yang diperbesar
         const rig = buildMinion(model, st.team, false);
         model.scale.setScalar(1.55);
         model.userData.baseScale = 1.55;
-        return { model, height: 1.75 * 1.55, mats: [], rig };
+        return { model, height: 1.55 * 1.55, mats: [], rig };
       }
-      return { model, height: 1.75, mats: [], rig: buildMinion(model, st.team, st.sub === 'ranged') };
+      return { model, height: 1.55, mats: [], rig: buildMinion(model, st.team, st.sub === 'ranged') };
     case 'tower':
       return { model, height: 8.3, mats: [], rig: buildTower(model, st.team) };
     case 'core':
@@ -132,9 +134,9 @@ export function buildModel(st: EntityStatic): Built {
         const rig = buildGolem(model, TITAN_LOOK);
         model.scale.setScalar(1.9);
         model.userData.baseScale = 1.9;
-        return { model, height: 3.9 * 1.9, mats: [], rig };
+        return { model, height: 3.0 * 1.9, mats: [], rig };
       }
-      if (st.sub === 'flow') return { model, height: 3.4, mats: [], rig: buildGolem(model, FLOW_LOOK) };
-      return st.sub === 'big' ? { model, height: 3.4, mats: [], rig: buildGolem(model) } : { model, height: 2.1, mats: [], rig: buildLizard(model) };
+      if (st.sub === 'flow') return { model, height: 2.5, mats: [], rig: buildGolem(model, FLOW_LOOK) };
+      return st.sub === 'big' ? { model, height: 2.5, mats: [], rig: buildGolem(model) } : { model, height: 1.6, mats: [], rig: buildLizard(model) };
   }
 }

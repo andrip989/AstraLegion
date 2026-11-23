@@ -45,6 +45,14 @@ export interface Rig {
   lean: number;
   /** Jarak terjang seluruh model saat menyerang (untuk model tanpa lengan penyerang). */
   lunge: number;
+  /** Lonjakan badan tiap langkah (model chibi melompat-lompat kecil saat berlari). */
+  bounce: number;
+  /** Goyang badan ke kiri-kanan tiap langkah (jalan "megal-megol"). */
+  waddle: number;
+  /** Kepala sedikit memiring bergantian saat diam (gerak imut). */
+  headTilt: number;
+  /** Seberapa tinggi badan terangkat saat casting (model berkaki pendek: kecil, supaya tidak terlepas dari kaki). */
+  castLift: number;
 }
 
 export interface AnimState {
@@ -70,6 +78,10 @@ export function newRig(partial: Partial<Rig> = {}): Rig {
     kneeBend: 1.0,
     lean: 0.1,
     lunge: 0,
+    bounce: 0.07,
+    waddle: 0.05,
+    headTilt: 0,
+    castLift: 0.22,
     ...partial,
   };
 }
@@ -123,15 +135,16 @@ export function animateRig(r: Rig, s: AnimState, time: number, dt: number): void
   if (r.body) {
     const b = r.body;
     const base = (b.userData.baseY as number | undefined) ?? 0;
-    b.position.y = base + Math.abs(step) * 0.07 * w + Math.sin(time * 2 + s.seed) * 0.02 * idle + castK * 0.22;
+    b.position.y = base + Math.abs(step) * r.bounce * w + Math.sin(time * 2 + s.seed) * 0.02 * idle + castK * r.castLift;
     b.rotation.x = r.lean * w + (s.atk > 0 && r.strikeArm ? Math.sin(atkT * Math.PI) * 0.22 : 0);
-    b.rotation.z = step * 0.05 * w;
+    b.rotation.z = step * r.waddle * w;
     b.rotation.y = step * 0.1 * w + (s.atk > 0 && r.strikeArm ? -Math.sin(atkT * Math.PI) * 0.45 : 0);
     b.position.z = r.aimArm ? -0.14 * s.atk : 0;
   }
   if (r.head) {
     r.head.rotation.y = Math.sin(time * 0.7 + s.seed * 3) * 0.22 * idle;
     r.head.rotation.x = -0.06 * w;
+    r.head.rotation.z = Math.sin(time * 0.9 + s.seed * 2) * r.headTilt * idle - step * r.waddle * 0.6 * w;
   }
 
   r.sway.forEach((o, i) => {

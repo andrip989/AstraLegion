@@ -28,6 +28,7 @@ export function renderPortraits(heroIds: string[], width = 360, height = 420, sk
   rim.position.set(3, 2.5, -4);
   scene.add(key, rim);
   const camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 50);
+  const box = new THREE.Box3();
 
   for (const id of heroIds) {
     const hero = buildHero(id, skins[id] ?? 0);
@@ -35,9 +36,11 @@ export function renderPortraits(heroIds: string[], width = 360, height = 420, sk
     animateRig(hero.rig, { phase: 0, walk: 0, atk: 0, cast: 0, seed: 1.3 }, 0.6, 0);
     hero.model.rotation.y = -0.45;
     scene.add(hero.model);
-    const h = hero.height;
-    camera.position.set(0, h * 0.62, h * 2.35);
-    camera.lookAt(0, h * 0.5, 0);
+    // bingkai dari kaki sampai puncak hiasan kepala (antena, jambul, halo), dibatasi supaya hiasan
+    // yang sangat tinggi tidak membuat wajah chibi-nya jadi kecil
+    const top = Math.min(box.setFromObject(hero.model).max.y, hero.height * 1.2);
+    camera.position.set(0, top * 0.62, top * 2.15);
+    camera.lookAt(0, top * 0.5, 0);
     renderer.render(scene, camera);
     out[id] = renderer.domElement.toDataURL('image/png');
     scene.remove(hero.model);
