@@ -3,24 +3,34 @@
 // Yang dipegang perangkat ini hanya token sesi (supaya tetap masuk setelah halaman dimuat ulang)
 // dan salinan terakhir akunnya (supaya nama, level, dan skin tetap tampil saat offline). Hasil
 // pertandingan TIDAK dikirim dari sini: server mencatatnya sendiri lalu mengabari lewat event
-// "acc:match". Semua yang datang dari server dibersihkan dulu (cleanAccount, id yang dikenal)
-// sebelum dipakai, karena alamat server bisa diisi pemain sendiri.
+// "acc:match". Koin, barang toko, gelar, dan bingkai juga tidak pernah dikirim dari sini: client
+// hanya meminta (klaim hadiah harian, beli, pasang) dan server yang memutuskan. Semua yang datang
+// dari server dibersihkan dulu (cleanAccount, id yang dikenal) sebelum dipakai, karena alamat
+// server bisa diisi pemain sendiri.
 import {
+  ACC_PROTOCOL_ECONOMY,
   ACC_PROTOCOL_SOCIAL,
   ACHIEVEMENTS,
+  SEASON_RE,
   cleanAccount,
   gameDay,
+  gameSeason,
   matchXp,
   missionById,
   nameKey,
   rankTier,
+  shopItem,
+  titleById,
   validateName,
   validatePassword,
   type AccBoard,
+  type AccBought,
+  type AccDaily,
   type AccFail,
   type AccHello,
   type AccMatch,
   type AccSignedIn,
+  type AccUpdated,
   type Account,
   type BoardRow,
   type MatchOutcome,
@@ -40,6 +50,8 @@ interface Saved {
   account: Account;
   /** Server itu punya tier peringkat (protokol akun versi 2), jadi poin di salinan akunnya memang berarti. */
   ranked?: boolean;
+  /** Server itu punya koin, toko, musim, dan gelar (protokol akun versi 3). */
+  economy?: boolean;
 }
 
 export interface Leaderboard {
@@ -49,7 +61,12 @@ export interface Leaderboard {
   total: number;
   /** Server ini punya tier peringkat; kalau tidak, papan diurutkan menurut XP seperti dulu. */
   ranked: boolean;
+  /** Id musim yang sedang berjalan ("YYYY-MM"); '' bila server belum punya musim. */
+  season: string;
 }
+
+/** Hasil permintaan koin/toko/gelar ke server: akun terbaru (sudah dibersihkan), atau alasan gagalnya. */
+export type EconomyResult<T = unknown> = ({ ok: true; account: Account } & T) | { ok: false; error: string };
 
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
 const idList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 32) : []);
@@ -64,7 +81,9 @@ function loadSaved(): Saved | null {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVED_KEY) ?? 'null') as Partial<Saved> | null;
     const account = cleanAccount(raw?.account);
-    if (raw && typeof raw.server === 'string' && typeof raw.token === 'string' && account) return { server: raw.server, token: raw.token, account, ranked: raw.ranked === true };
+    if (raw && typeof raw.server === 'string' && typeof raw.token === 'string' && account) {
+      return { server: raw.server, token: raw.token, account, ranked: raw.ranked === true, economy: raw.economy === true };
+    }
   } catch {
     /* data rusak / penyimpanan tidak tersedia: dianggap belum masuk */
   }
@@ -89,6 +108,8 @@ export class ServerAccountStore implements AccountStore {
   private waiter: ((m: AccMatch | null) => void) | null = null;
   /** Nomor urut attach; attach yang sudah digantikan tidak boleh mengubah apa pun. */
   private turn = 0;
+  /** Dipanggil tiap kali akun yang sedang masuk berubah (koin, barang, gelar, hasil pertandingan). */
+  onChange: (() => void) | null = null;
 
   /** Tersambung ke server yang mendukung akun online. */
   get linked(): boolean {
@@ -106,6 +127,20 @@ export class ServerAccountStore implements AccountStore {
    */
   get ranked(): boolean {
     return this.link ? this.version >= ACC_PROTOCOL_SOCIAL : this.saved?.ranked === true;
+  }
+
+  /**
+   * Akun ini punya koin, hadiah harian, toko, musim, gelar, dan bingkai: server yang tersambung
+   * mendukungnya (protokol versi 3), atau (saat offline) salinan akunnya berasal dari server yang
+   * mendukungnya. Saat offline semuanya hanya bisa dilihat, tidak bisa diubah.
+   */
+  get economy(): boolean {
+    return this.link ? this.version >= ACC_PROTOCOL_ECONOMY : this.saved?.economy === true;
+  }
+
+  /** Id musim yang sedang berjalan menurut jam server. */
+  season(): string {
+    return gameSeason(Date.now() + this.skew);
   }
 
   current(): Account | null {
@@ -129,14 +164,17 @@ export class ServerAccountStore implements AccountStore {
     this.account = account;
     if (!this.link) return;
     const ranked = this.version >= ACC_PROTOCOL_SOCIAL;
+    const economy = this.version >= ACC_PROTOCOL_ECONOMY;
     // daftar teman mengikuti akun yang masuk (tidak ada di server versi lama)
     this.friends.bind(ranked ? this.link : null, account.name);
-    if (token) this.saved = { server: this.link.endpoint, token, account, ranked };
+    if (token) this.saved = { server: this.link.endpoint, token, account, ranked, economy };
     else if (this.saved?.server === this.link.endpoint) {
       this.saved.account = account;
       this.saved.ranked = ranked;
-    } else return;
-    this.persist();
+      this.saved.economy = economy;
+    }
+    if (this.saved?.account === account) this.persist();
+    this.onChange?.();
   }
 
   /**
@@ -175,6 +213,11 @@ export class ServerAccountStore implements AccountStore {
     this.version = int(hello.v);
     this.skew = (Number(hello.now) || Date.now()) - Date.now();
     link.on('acc:match', (data) => this.onMatch(data));
+    // akun berubah lewat sambungan lain milik akun yang sama (tab atau perangkat lain)
+    link.on('acc:update', (data) => {
+      const account = this.link === link ? cleanAccount((data as Partial<AccUpdated> | null)?.account) : null;
+      if (account && this.account && nameKey(account.name) === nameKey(this.account.name)) this.setAccount(account);
+    });
     this.friends.listen(link);
     link.reauth = (request) => {
       const mine = this.link === link && this.account ? this.saved : null;
@@ -239,6 +282,54 @@ export class ServerAccountStore implements AccountStore {
     this.account = null;
     this.pending = null;
     this.friends.bind(null, null);
+    this.onChange?.();
+  }
+
+  // ---- koin, hadiah harian, toko, gelar, bingkai
+  //
+  // Semuanya permintaan ke server; yang memutuskan (hari, streak, harga, saldo, syarat gelar)
+  // adalah server. Jawabannya, yaitu akun terbaru, dibersihkan dulu seperti jawaban lainnya.
+
+  private async economyCall<R extends AccUpdated>(event: string, data: Record<string, unknown>): Promise<{ ok: true; account: Account; reply: R } | { ok: false; error: string }> {
+    const link = this.link;
+    const mine = this.account;
+    if (!link || !mine) return { ok: false, error: 'Hanya tersedia saat tersambung dengan akun online.' };
+    if (!this.economy) return { ok: false, error: 'Server ini belum mendukung koin dan toko.' };
+    const r = await link.request<R | AccFail>(event, data, 6000);
+    if (!r) return { ok: false, error: NO_REPLY };
+    if (!r.ok) return { ok: false, error: typeof r.error === 'string' && r.error ? r.error.slice(0, 200) : 'Permintaan ditolak server.' };
+    const account = cleanAccount(r.account);
+    // jawaban untuk akun lain, atau akun/sambungannya sudah berganti selagi menunggu: tidak dipakai
+    const same = (a: Account | null) => !!a && nameKey(a.name) === nameKey(mine.name);
+    if (!same(account) || this.link !== link || !same(this.account)) return { ok: false, error: 'Jawaban server tidak dikenal.' };
+    this.setAccount(account!);
+    return { ok: true, account: account!, reply: r };
+  }
+
+  /** Klaim hadiah masuk harian. `already`: hari ini sudah diklaim sebelumnya (tidak ada koin baru). */
+  async claimDaily(): Promise<EconomyResult<{ coins: number; streak: number; already: boolean }>> {
+    const r = await this.economyCall<AccDaily>('acc:daily', {});
+    if (!r.ok) return r;
+    return { ok: true, account: r.account, coins: Math.min(int(r.reply.coins), 9999), streak: int(r.reply.streak), already: r.reply.already === true };
+  }
+
+  /** Beli satu barang toko (id di SHOP_ITEMS). `already`: barangnya ternyata sudah dimiliki. */
+  async buy(item: string): Promise<EconomyResult<{ already: boolean }>> {
+    if (!shopItem(item)) return { ok: false, error: 'Barang itu tidak ada di toko.' };
+    const r = await this.economyCall<AccBought>('acc:buy', { item });
+    if (!r.ok) return r;
+    return { ok: true, account: r.account, already: r.reply.already === true };
+  }
+
+  /** Pasang gelar dan/atau bingkai ('' = lepas). */
+  async equip(what: { title?: string; frame?: string }): Promise<EconomyResult> {
+    const r = await this.economyCall<AccUpdated>('acc:equip', what);
+    return r.ok ? { ok: true, account: r.account } : r;
+  }
+
+  /** Ringkasan "Musim baru" untuk musim `season` sudah dilihat: server tidak menandainya lagi. */
+  async seenSeason(season: string): Promise<void> {
+    if (SEASON_RE.test(season)) await this.economyCall<AccUpdated>('acc:seen', { season });
   }
 
   // ---- hasil pertandingan
@@ -252,6 +343,9 @@ export class ServerAccountStore implements AccountStore {
     const clean: AccMatch = { account, xp: int(m.xp), missions: idList(m.missions), unlocked: idList(m.unlocked) };
     // perubahan poin peringkat boleh negatif; besarnya dibatasi supaya aman ditampilkan
     if (typeof m.rp === 'number' && Number.isFinite(m.rp)) clean.rp = Math.max(-999, Math.min(999, Math.trunc(m.rp)));
+    // koin: bilangan bulat kecil tak negatif; server versi lama tidak mengirimnya
+    if (typeof m.coins === 'number') clean.coins = Math.min(int(m.coins), 9999);
+    if (typeof m.coinsBonus === 'number') clean.coinsBonus = Math.min(int(m.coinsBonus), 9999);
     if (m.skipped === 'short' || m.skipped === 'afk' || m.skipped === 'left') clean.skipped = m.skipped;
     if (this.waiter) {
       const waiter = this.waiter;
@@ -284,6 +378,11 @@ export class ServerAccountStore implements AccountStore {
       out.rank = { delta: m.rp, rp, tier: now.tier, ...(before.index !== now.index ? { was: before.tier } : {}) };
     } else {
       out.rankNote = 'Server ini belum mendukung tier peringkat, jadi poin peringkat tidak berubah.';
+    }
+    // koin: angka server (hanya server versi 3 yang punya koin)
+    if (this.economy && m.coins !== undefined) {
+      out.coins = m.coins;
+      out.coinsBonus = m.coinsBonus ?? 0;
     }
     // server hanya mengirim id; teksnya diambil dari daftar milik client sendiri
     for (const id of m.missions) {
@@ -334,8 +433,12 @@ export class ServerAccountStore implements AccountStore {
     const row = (x: unknown): BoardRow | null => {
       const b = (x ?? {}) as Partial<BoardRow>;
       if (typeof b.name !== 'string' || validateName(b.name)) return null;
-      return { rank: int(b.rank), name: b.name, rp: int(b.rp), level: int(b.level), xp: int(b.xp), wins: int(b.wins), matches: int(b.matches) };
+      const out: BoardRow = { rank: int(b.rank), name: b.name, rp: int(b.rp), level: int(b.level), xp: int(b.xp), wins: int(b.wins), matches: int(b.matches) };
+      // gelar: hanya id yang ada di tabel gelar milik client; teksnya diambil dari tabel itu
+      if (this.economy && titleById(b.title)) out.title = b.title;
+      return out;
     };
-    return { top: r.top.slice(0, 50).map(row).filter((b): b is BoardRow => b !== null), me: row(r.me), total: int(r.total), ranked: this.ranked };
+    const season = this.economy && typeof r.season === 'string' && SEASON_RE.test(r.season) ? r.season : '';
+    return { top: r.top.slice(0, 50).map(row).filter((b): b is BoardRow => b !== null), me: row(r.me), total: int(r.total), ranked: this.ranked, season };
   }
 }

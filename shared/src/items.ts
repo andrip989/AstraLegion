@@ -98,6 +98,7 @@ export const BUILDS: Record<string, string[]> = {
   shadow_fang: ['storm_blade', 'wind_boots', 'vampire_fang', 'nova_greatsword', 'cosmic_clock', 'flash_gauntlet'],
   lumen_sage: ['mana_core', 'wind_boots', 'cosmic_clock', 'pure_charm', 'astra_crystal', 'dragon_heart'],
   ember_lancer: ['storm_blade', 'titan_plate', 'wind_boots', 'thunder_horn', 'dragon_heart', 'nova_greatsword'],
+  gale_archer: ['storm_blade', 'flash_gauntlet', 'wind_boots', 'nova_greatsword', 'vampire_fang', 'titan_plate'],
 };
 export const DEFAULT_BUILD = ['storm_blade', 'wind_boots', 'titan_plate', 'cosmic_clock', 'nova_greatsword', 'dragon_heart'];
 

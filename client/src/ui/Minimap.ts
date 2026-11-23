@@ -41,16 +41,41 @@ export class Minimap {
       sm.target.z = ((e.clientY - r.top) / r.height) * MAP_SIZE;
       onPan();
     };
+    const spot = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: ((e.clientX - r.left) / r.width) * MAP_SIZE, z: ((e.clientY - r.top) / r.height) * MAP_SIZE };
+    };
+    let hold = 0;
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      // klik kanan minimap: tandai titik itu untuk tim (pilih jenis pesan di menu)
+      if (e.button === 2 || e.altKey) {
+        const p = spot(e);
+        this.onPingAt?.(p.x, p.z);
+        return;
+      }
       canvas.setPointerCapture(e.pointerId);
       jump(e);
+      // layar sentuh: tekan lama (0,5 detik) di tempat yang sama juga menandai titik
+      if (e.pointerType !== 'mouse') {
+        const p = spot(e);
+        clearTimeout(hold);
+        hold = window.setTimeout(() => this.onPingAt?.(p.x, p.z), 500);
+      }
     });
+    const cancelHold = () => clearTimeout(hold);
+    canvas.addEventListener('pointerup', cancelHold);
+    canvas.addEventListener('pointercancel', cancelHold);
     canvas.addEventListener('pointermove', (e) => {
-      if (canvas.hasPointerCapture(e.pointerId)) jump(e);
+      if (!canvas.hasPointerCapture(e.pointerId)) return;
+      if (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) cancelHold(); // menggeser kamera, bukan menandai
+      jump(e);
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
+
+  /** Pemain ingin menandai titik (x, z) di peta (klik kanan / tekan lama); diisi GameClient. */
+  onPingAt: ((x: number, z: number) => void) | null = null;
 
   /** Lapisan kabut perang (diisi GameClient); kanvasnya digambar di atas latar minimap. */
   fog: FogOfWar | null = null;

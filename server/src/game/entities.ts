@@ -155,6 +155,8 @@ export class Hero extends Unit {
   itemCd: Record<string, number> = {};
   /** Berkah Arus aktif sampai waktu ini. */
   flowUntil = 0;
+  /** Berapa kali timnya menumbangkan Titan Astra di pertandingan ini selagi hero ini ikut (untuk statistik akun). */
+  titans = 0;
   /** Berkah Titan aktif sampai waktu ini. */
   titanUntil = 0;
   /** Jumlah perintah bermain (gerak, serang, skill, mantra) dari pemiliknya; untuk mengenali pemain yang diam saja. */

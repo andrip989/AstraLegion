@@ -84,6 +84,15 @@ desain buatan sendiri). Satu kode yang sama berjalan sebagai:
 - **Latihan bebas**: tombol di lobby (atau `?latihan` di alamat) memulai pertandingan offline
   dengan panel alat bantu: atur level dan emas, pulihkan dan reset semua jeda, boneka sasaran,
   hentikan bot atau minion, panggil Titan. Hasilnya tidak dicatat ke akun.
+- **Tutorial pemain baru**: tombol Tutorial di lobby (disorot bagi yang belum pernah menjalaninya)
+  memulai satu pertandingan offline lawan bot Mudah dengan kartu petunjuk yang maju sendiri begitu
+  langkahnya dilakukan: bergerak, menyerang, skill, belanja, suar, lalu menghancurkan tower.
+  Hasilnya tidak dicatat. Langkah-langkahnya di [client/src/ui/Tutorial.ts](client/src/ui/Tutorial.ts).
+- **Ukuran tim**: 3v3 (bawaan), 2v2, atau 1v1, dipilih di lobby oleh pemain pertama di room.
+  Tempat yang kosong tetap diisi bot sampai pemain lain masuk, dan Titan Astra lebih ringan di
+  room kecil. Bisa digabung dengan mode Kilat.
+- **Grafik emas di layar akhir**: emas yang dikumpulkan kedua tim sepanjang pertandingan (satu
+  titik tiap 15 detik), dikirim server setelah pertandingan selesai.
 - **Bisukan pemain**: tombol Bisukan di papan skor menyembunyikan obrolan, pesan cepat, dan emote
   dari satu pemain di perangkat sendiri (sampai halaman dimuat ulang).
 - **Pasang dari browser**: versi web punya manifest dan ikon sendiri
@@ -231,6 +240,7 @@ Perintah lain:
 | Item aktif | klik slot item, atau `1`-`6` sesuai nomor slotnya | ketuk slot item |
 | Menyerah | `V`, lalu tombol Menyerah (ketuk dua kali) | tombol 📣, lalu Menyerah |
 | Pesan cepat ke tim / emote | `V`, lalu `1`-`6` untuk pesan atau klik emote | tombol 📣 |
+| Tandai titik di peta | klik kanan minimap, atau `Alt`+klik di arena, lalu pilih pesannya | tekan lama minimap, lalu pilih pesannya |
 | Pulang ke base (recall) | `B` | tombol rumah |
 | Beli item rekomendasi | `G` atau klik kartu Rekomendasi | ketuk kartu Rekomendasi |
 | Toko | `P` | tombol keranjang |
@@ -305,7 +315,10 @@ snapshot datang tidak teratur (jaringan seluler).
 Layar pertama adalah **Masuk / Daftar** (atau "Main sebagai tamu"). Akun menyimpan level akun
 (XP dari tiap pertandingan), jumlah menang/kalah, KDA, statistik per hero, dan 20 pertandingan
 terakhir; semuanya terlihat di jendela **Profil** di lobby. Akun online juga punya **tier
-peringkat** dan **daftar teman** (dua bagian di bawah).
+peringkat**, **daftar teman**, **koin** dengan **hadiah harian** dan **toko kosmetik**, **musim
+peringkat** dengan **bingkai** dan **gelar**, serta **penguasaan hero** (bagian-bagian di bawah).
+Semua itu hanya untuk akun online: tamu dan akun di perangkat mendapat keterangan "hanya untuk
+akun online" di tempat fiturnya, bukan angka tiruan.
 
 Ada dua jenis akun, dan layar masuk selalu menyebut mana yang sedang dipakai:
 
@@ -382,7 +395,7 @@ tier").
 
 Tombol **Teman** di lobby (di samping Peringkat; angkanya = permintaan yang belum dijawab) membuka
 daftar teman akun online. Tidak ada pesan bebas di fitur ini: yang berpindah hanya nama akun,
-poin peringkat, status, dan kode room.
+poin peringkat, id gelar, status, dan kode room.
 
 - **Menambah teman** lewat nama akunnya (tanpa membedakan huruf besar/kecil). Itu membuat
   permintaan; pemain satunya **menerima** atau **menolak**, dan kedua pihak bisa **menghapus**
@@ -404,9 +417,120 @@ poin peringkat, status, dan kode room.
   menolak tanpa mengirim apa pun, dan client masih memeriksa sekali lagi bahwa pengirimnya ada di
   daftar teman.
 
+### Koin dan hadiah harian
+
+Tiap akun online punya **koin** (`coins` di profil; bilangan bulat, tidak pernah di bawah 0).
+Koin hanya ditambah **server**, dari hal yang ia catat sendiri; client tidak punya event untuk
+mengirim koin. Tabel dan hitungannya ada di [shared/src/economy.ts](shared/src/economy.ts).
+
+| Sumber | Koin |
+| --- | --- |
+| Menang pertandingan online yang dicatat | 30 (mode Kilat 18) |
+| Kalah pertandingan online yang dicatat | 12 (mode Kilat 7) |
+| Tiap misi harian yang tercapai | 15 |
+| Hadiah masuk harian | 20, 30, 40, 50, 60, 80, lalu 120 per hari |
+| Hadiah akhir musim | menurut tier akhir (lihat di bawah) |
+
+- Pertandingan yang tidak dicatat penuh tidak memberi koin: ikut kurang dari 2 menit, keluar
+  sebelum selesai, atau nyaris diam saja (aturan yang sama dengan XP di atas).
+- **Hadiah masuk harian** diklaim dengan menekan tombolnya di lobby (di samping misi harian),
+  satu kali per hari permainan (berganti pukul 00.00 WIB). Klaim di hari yang berurutan
+  menaikkan streak: hari ke-1 sampai ke-7 memberi 20, 30, 40, 50, 60, 80, 120 koin, sesudah itu
+  tetap 120 per hari; bila ada satu hari yang terlewat, kembali ke hari ke-1. Hari dan streak
+  ditentukan jam server (event `acc:daily` tidak membawa isi apa pun); klaim kedua di hari yang
+  sama, atau klaim setelah jam server mundur, dijawab "sudah diklaim" tanpa koin.
+- Koin tampil di tombol **Toko** di bilah akun lobby, di profil, dan di layar akhir pertandingan
+  ("+30 koin", dan "Koin misi harian +15" bila ada misi yang tercapai).
+
+### Toko kosmetik
+
+Tombol **Toko** di lobby membuka daftar barang yang dibeli dengan koin: mana yang dijual, mana
+yang sudah dimiliki, dan skin mana yang sedang dipakai hero terpilih.
+
+| Barang | Harga | Isi |
+| --- | --- | --- |
+| Skin **Aurora**, skin **Nebula** | 300 koin masing-masing | skin warna premium; berlaku untuk semua hero, seperti skin gratis |
+| **Paket emote** | 250 koin | emote ke-7 sampai ke-12 di menu pesan cepat, untuk pertandingan online |
+
+- Membeli lewat event `acc:buy` dengan satu langkah konfirmasi di layar. **Server** yang
+  memeriksa barangnya ada, harganya (dari tabel server, bukan dari permintaan), saldo, dan
+  kepemilikan. Pemeriksaan dan pemotongan terjadi dalam satu langkah, jadi klik ganda, permintaan
+  yang diulang, dan permintaan bersamaan dari beberapa tab tidak bisa memotong dua kali atau
+  membuat saldo negatif; membeli barang yang sudah dimiliki dijawab berhasil tanpa memotong apa pun.
+- **Skin diperiksa server saat bergabung** (`joinSkin` di
+  [server/src/accounts.ts](server/src/accounts.ts)): akun yang meminta skin yang belum ia punya
+  (level akun belum cukup, atau skin premium yang belum dibeli) tampil dengan skin asli. Tamu
+  tetap bisa memakai skin gratis seperti sebelumnya, tetapi tidak skin premium. Pilihan skin
+  sendiri tetap per hero dan disimpan di perangkat (chip di kartu hero, atau tombol **Pakai** di
+  toko); chip skin premium yang belum dimiliki menyebut harganya dan membuka toko.
+- **Paket emote** sampai ke pertandingan lewat server: saat bergabung server menetapkan jumlah
+  emote pemain dari akunnya (`setEmotes`), dan simulasi menolak emote yang tidak dimiliki.
+  Jumlah emote yang dikirim client hanya dipakai pertandingan offline di perangkat itu sendiri.
+- Gelar dan bingkai **tidak dijual** (lihat di bawah).
+
+### Musim peringkat, bingkai, dan gelar
+
+Satu **musim** adalah satu bulan kalender menurut waktu permainan (WIB); id-nya `YYYY-MM`, dan
+namanya tampil di profil dan di papan peringkat ("Musim November 2026"). Hitungannya ada di
+[shared/src/season.ts](shared/src/season.ts) dan `rollSeason` di
+[shared/src/account.ts](shared/src/account.ts).
+
+- **Penutupan musim.** Pertama kali server menyentuh sebuah akun di musim baru (masuk,
+  melanjutkan sesi, mencatat pertandingan, klaim hadiah, toko), musim lamanya ditutup, tepat
+  satu kali, juga bila beberapa sambungan akun itu datang bersamaan: tier dan poin akhirnya
+  masuk **riwayat musim** di profil (12 musim terakhir), hadiah koin dibayarkan, **bingkai**
+  tier itu diberikan, dan poin peringkat dibagi dua (dibulatkan ke bawah).
+
+  | Tier akhir | Perunggu | Perak | Emas | Platina | Berlian | Legenda |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Hadiah koin | 0 | 60 | 120 | 200 | 300 | 450 |
+
+- Akun yang melewatkan beberapa musim sekaligus ditutup satu kali saja (musim terakhir yang ia
+  ikuti). Papan peringkat dan daftar teman menampilkan akun yang belum ditutup dengan poin yang
+  akan ia punya begitu ditutup (setengahnya), supaya poin musim lalu tidak bercampur dengan
+  poin musim ini. Bila jam server mundur, tidak ada yang ditutup.
+- Pemain melihat ringkasan **"Musim baru"** sekali: tier akhir, hadiah, bingkai, dan poin awal
+  musim ini. Server menandai akun yang ringkasannya belum dilihat (`seasonNote`) sampai client
+  mengirim `acc:seen`, jadi ringkasannya tidak hilang walau musim ditutup saat pemain sedang
+  tidak melihat (mis. oleh pencatatan pertandingan) dan tidak muncul dua kali.
+- **Bingkai** adalah cincin berwarna tier di sekeliling lencana level (profil dan tombol profil
+  di lobby), digambar CSS. Bingkai bersifat permanen dan tidak dijual; yang pertama didapat
+  langsung terpasang, sesudah itu pemain memilih sendiri di profil.
+- **Gelar** adalah teks pendek di bawah nama: di profil, di baris papan peringkat, dan di
+  daftar teman (tidak tampil di dalam pertandingan). Pemain memilih satu dari yang sudah
+  terbuka; tiap gelar terbuka lewat angka yang dicatat server sendiri
+  ([shared/src/titles.ts](shared/src/titles.ts)):
+
+  | Gelar | Syarat |
+  | --- | --- |
+  | Prajurit Astra | menang 5 pertandingan online |
+  | Veteran | main 25 pertandingan online |
+  | Penakluk Arena | menang 50 pertandingan online |
+  | Tak Terbendung | 8 kill dalam satu pertandingan |
+  | Pemburu Titan | tim pemain menumbangkan Titan Astra 10 kali (hitungan baru `titans`, dicatat server saat pertandingan selesai) |
+  | Si Rajin | hadiah harian 7 hari berturut-turut (streak terpanjang) |
+  | Kesatria Emas, Bintang Berlian, Legenda Hidup | pernah mencapai tier itu (poin tertinggi `peak`) |
+
+- Memasang gelar atau bingkai lewat `acc:equip`; server memeriksa gelarnya dikenal dan
+  syaratnya terpenuhi, dan bingkainya memang dimiliki. Yang berpindah lewat jaringan hanya id;
+  teks gelar selalu diambil client dari tabelnya sendiri.
+
+### Penguasaan hero
+
+Tiap hero punya **tingkat penguasaan** yang dihitung dari statistik per hero yang sudah ada di
+profil (tidak ada data baru): poin penguasaan = jumlah main + jumlah menang dengan hero itu,
+jadi kemenangan dihitung dua kali. Tingkatnya Pemula (1 poin), Terlatih (8), Mahir (20), Ahli
+(45), dan Master (90); hitungannya di [shared/src/mastery.ts](shared/src/mastery.ts). Lencananya
+(belah ketupat berangka, digambar CSS) tampil di pojok potret tiap kartu hero di lobby dan di
+daftar hero di profil. Karena statistik per hero akun online hanya dicatat server, penguasaan
+hanya ditampilkan untuk akun online.
+
+### Penyimpanan dan pengamanan
+
 **Yang disimpan dan pengamanannya** ([server/src/accounts.ts](server/src/accounts.ts)). Per akun
 hanya: nama, hash kata sandi, hash token sesi beserta waktu terakhir dipakai, statistik
-permainan (termasuk poin peringkat), dan daftar teman beserta permintaan pertemanannya (berupa
+permainan (termasuk poin peringkat, koin, barang toko, gelar, bingkai, riwayat musim, dan
+keadaan hadiah harian), dan daftar teman beserta permintaan pertemanannya (berupa
 nama akun). Tidak ada email, alamat IP, atau data perangkat; kehadiran teman hanya ada di memori.
 
 - Kata sandi di-hash dengan `scrypt` bergaram (acak per akun) dan dibandingkan dalam waktu tetap;
@@ -422,10 +546,14 @@ nama akun). Tidak ada email, alamat IP, atau data perangkat; kehadiran teman han
 - Pembatas laju daftar teman: 10 permintaan pertemanan per 10 menit per akun, paling banyak 2
   permintaan yang diantar ke orang yang sama per jam (batal lalu kirim lagi berulang-ulang), satu
   undangan per teman per 10 detik, dan semua event akun dan teman 30 per 10 detik per sambungan.
+- Pembatas laju koin dan toko: klaim hadiah, pembelian, dan pemasangan gelar/bingkai dihitung
+  bersama, 30 per menit per akun dari semua sambungannya.
 - Semua yang diterima client dari server dianggap tidak dipercaya: profil, daftar teman, status,
   dan undangan dibersihkan dulu (`cleanAccount`, `cleanFriendList`, `cleanInvite`: hanya nama akun
   yang sah, angka, status yang dikenal, kode room baku) dan nama dilewatkan fungsi escape sebelum
-  masuk HTML.
+  masuk HTML. Koin, barang toko, bingkai, gelar, dan riwayat musim ikut dibersihkan di
+  `cleanProfile`: angka bulat tak negatif, dan hanya id yang ada di tabel milik game; teks yang
+  tampil (nama barang, gelar, tier, musim) selalu berasal dari tabel client sendiri.
 - Batas ukuran: nama 3–16 karakter, kata sandi 6–64 karakter, pesan dari client paling besar
   32 KB, dan jumlah akun paling banyak `MAX_ACCOUNTS`.
 
@@ -446,6 +574,20 @@ isian itu mulai dari 0 poin dan daftar kosong, dan tidak ada yang dibuang. Saat 
 teman dirapikan (teman harus saling mencantumkan dan akunnya harus ada), jadi file yang diedit
 tangan tidak menghasilkan hubungan yang timpang. Server versi lama yang membaca file baru akan
 mengabaikan isian itu, dan membuangnya saat menulis ulang.
+
+Yang ditambahkan untuk koin, toko, musim, dan gelar, semuanya di dalam `profile` dan tetap
+`"v": 1`: `coins` (koin), `owned` (id barang toko), `title` (id gelar terpasang), `frames` dan
+`frame` (bingkai yang dimiliki dan yang terpasang; id tier), `titans` (Titan yang ditumbangkan),
+`peak` (poin peringkat tertinggi), `login` (hadiah harian: `day`, `streak`, `best`), `season` (id
+musim tempat poin sekarang berada), `seasons` (riwayat musim: `id`, `rp`, `tier`, `coins`), dan
+`seasonNote` (musim yang ringkasannya belum dilihat). File yang sudah ada dimuat apa adanya dan
+tidak ada yang dibuang: akun lama mulai dengan 0 koin, tanpa barang, gelar, dan bingkai; `peak`
+mulai dari poin peringkatnya saat itu; dan `season` diisi musim yang sedang berjalan saat file
+itu pertama kali dimuat server versi ini (tidak ada yang ditutup, poin tidak berubah), supaya
+akun yang lama tidak masuk pun ikut dibagi dua saat musim berikutnya berganti. Gelar terpasang
+yang tidak dikenal atau belum terbuka (file yang diedit tangan) dikosongkan saat dimuat. Sama
+seperti di atas, server versi lama yang membaca file ini akan membuang isian tersebut saat
+menulis ulang, jadi cadangkan `accounts.json` dulu sebelum kembali ke versi lama.
 
 - **Mencadangkan**: salin `accounts.json` ke tempat lain (boleh selagi server berjalan). Di
   hosting yang di-mount sebagai drive: `copy T:\astra-legion-data\accounts.json D:\cadangan\`.
@@ -473,7 +615,18 @@ ke server yang mendukung akun, dan ke `LocalAccountStore` selain itu; keduanya m
 di [shared/src/account.ts](shared/src/account.ts): `acc:hello`, `acc:register`, `acc:login`,
 `acc:resume`, `acc:logout`, `acc:board`, dan `acc:match` dari server. `acc:hello` melaporkan versi
 protokol: 2 berarti server punya tier peringkat dan daftar teman; di server versi 1 client
-menyembunyikan keduanya.
+menyembunyikan keduanya. Versi 3 menambah koin, hadiah harian, toko, musim, gelar, dan bingkai:
+`acc:daily`, `acc:buy`, `acc:equip`, `acc:seen`, dan dari server `acc:update` (akun berubah lewat
+tab atau perangkat lain milik akun yang sama); di server versi 2 client menyembunyikan semuanya
+dan menyebutkan bahwa server itu belum mendukungnya.
+
+Koin, toko, musim, gelar, dan penguasaan: tabelnya di
+[shared/src/economy.ts](shared/src/economy.ts), [season.ts](shared/src/season.ts),
+[titles.ts](shared/src/titles.ts), dan [mastery.ts](shared/src/mastery.ts); keputusannya di
+`AccountDb` (`claimDaily`, `buy`, `equip`, `seen`, `joinSkin`, `emotes`) dan `rollSeason`; sisi
+client di `accounts` (`claimDaily`, `buy`, `equip`, `economy`), lencananya di
+[client/src/account/badges.ts](client/src/account/badges.ts), dan jendelanya `openShop`,
+`openSeasonNews`, serta `openProfile` di [client/src/ui/panels.ts](client/src/ui/panels.ts).
 
 Daftar teman: protokolnya di [shared/src/friends.ts](shared/src/friends.ts) (`fr:list`, `fr:add`,
 `fr:accept`, `fr:decline`, `fr:cancel`, `fr:remove`, `fr:invite`, dan dari server `fr:update`,

@@ -1,18 +1,39 @@
 // Titik masuk client: layar masuk/daftar -> lobby pemilihan hero -> sambung ke server (atau
 // offline) -> mulai game.
-import { BOT_LEVELS, CLIENT_CAPS, DEFAULT_SPELL, DEFAULT_TALENT, GAME_MODES, HERO_LIST, SKILL_KEYS, SKINS, SPELLS, SPELL_LIST, TALENTS, TALENT_LIST, roomCode, type GameMode, type Team } from '../../shared/src';
+import {
+  BOT_LEVELS,
+  CLIENT_CAPS,
+  DEFAULT_SPELL,
+  DEFAULT_TALENT,
+  GAME_MODES,
+  HERO_LIST,
+  SKILL_KEYS,
+  SKINS,
+  SPELLS,
+  SPELL_LIST,
+  TALENTS,
+  TALENT_LIST,
+  emotesOwned,
+  loginView,
+  roomCode,
+  skinUnlocked,
+  type GameMode,
+  type Team,
+} from '../../shared/src';
 import { askTraining } from './ui/Training';
+import { askTutorial, tutorialDone } from './ui/Tutorial';
 import { accountLevel, accounts, validateName, validatePassword } from './account/accounts';
 import { sound } from './audio/Sound';
 import { GameClient } from './game/GameClient';
 import { connect, type Transport } from './net/transport';
-import { renderPortraits } from './render/portraits';
+import { PORTRAITS, renderPortraits } from './render/portraits';
 import { skillIcon } from './ui/icons';
-import { closeModal, openFriends, openLeaderboard, openProfile, openSettings } from './ui/panels';
+import { closeModal, isModalOpen, openFriends, openLeaderboard, openProfile, openSeasonNews, openSettings, openShop } from './ui/panels';
 import { APP_VERSION, UPDATE_URL, applyUpdate, checkForUpdate, confirmUpdate, isNative, shellOutdated } from './update';
 import { spellIcon } from './ui/spellIcons';
 import { dailyView } from './account/progress';
 import { tierBadgeFor } from './account/rank';
+import { COIN, coinText, frameClass, masteryFor } from './account/badges';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const store = {
@@ -43,10 +64,11 @@ for (const h of HERO_LIST) {
   el.className = 'hero-card';
   el.style.setProperty('--hc', '#' + h.accent.toString(16).padStart(6, '0'));
   el.innerHTML =
-    `<div class="portrait"><img alt="" data-hero="${h.id}" /></div>` +
+    // .hero-mastery: lencana penguasaan hero (hanya akun online; diisi refreshCards)
+    `<div class="portrait"><img alt="" data-hero="${h.id}" /><span class="hero-mastery"></span></div>` +
     `<div class="role">${h.role}</div><h3>${h.name}</h3><div class="title">${h.title}</div><p>${h.desc}</p>` +
     `<ul>${h.skills.map((s, i) => `<li>${skillIcon(s.id)}<b>${SKILL_KEYS[i]}</b>${s.name}</li>`).join('')}</ul>` +
-    `<div class="skins" data-hero="${h.id}">${SKINS.map((k) => `<span role="button" data-skin="${k.id}" style="--hue:${Math.round(k.hue * 360)}deg;--lum:${k.lum}"><i></i>${k.name}<small></small></span>`).join('')}</div>`;
+    `<div class="skins" data-hero="${h.id}">${SKINS.map((k) => `<span role="button" data-skin="${k.id}"${k.price !== undefined ? ' class="premium"' : ''} style="--hue:${Math.round(k.hue * 360)}deg;--lum:${k.lum}"><i></i>${k.name}<small></small></span>`).join('')}</div>`;
   el.addEventListener('click', () => {
     selectedHero = h.id;
     store.set('hero', h.id);
@@ -55,14 +77,19 @@ for (const h of HERO_LIST) {
   el.dataset.id = h.id;
   cards.appendChild(el);
 }
-// ----- skin warna: terbuka menurut level akun (tamu hanya punya skin asli) -----
+// ----- skin warna: skin gratis terbuka menurut level akun (tamu hanya punya skin asli); skin
+// premium dibeli di toko dan hanya ada di akun online. Server memeriksanya lagi saat bergabung. -----
 const skinOf = (heroId: string): number => {
   const n = Number(store.get('skin.' + heroId)) || 0;
-  return SKINS[n] && SKINS[n].level <= myLevel() ? n : 0;
+  return skinUnlocked(n, myLevel(), myItems()) ? n : 0;
 };
 function myLevel(): number {
   const acc = accounts.current();
   return acc ? accountLevel(acc.profile.xp).level : 0;
+}
+/** Barang toko milik akun yang sedang dipakai (kosong untuk tamu, akun di perangkat, dan server versi lama). */
+function myItems(): readonly string[] {
+  return accounts.economy ? (accounts.current()?.profile.owned ?? []) : [];
 }
 /** Skin yang sedang tergambar di potret tiap hero (kosong sampai potret pertama selesai dirender). */
 const paintedSkin: Record<string, number> = {};
@@ -83,7 +110,19 @@ cards.addEventListener('click', (e) => {
   if (!chip) return;
   const heroId = chip.parentElement!.dataset.hero!;
   const skin = SKINS[Number(chip.dataset.skin)];
-  if (skin.id > 0 && skin.level > myLevel()) {
+  if (!skinUnlocked(skin.id, myLevel(), myItems())) {
+    if (skin.price !== undefined) {
+      // skin premium yang belum dimiliki: akun online langsung dibawa ke toko, yang lain mendapat keterangan
+      roomHint.textContent = accounts.economy ? `Skin ${skin.name} dijual di Toko seharga ${skin.price} koin.` : `Skin ${skin.name} dijual di Toko (${skin.price} koin). ${accounts.economyNote()}`;
+      if (accounts.economy) {
+        sound.play('click');
+        selectedHero = heroId;
+        store.set('hero', heroId);
+        refreshCards();
+        showShop();
+      } else sound.play('error');
+      return;
+    }
     sound.play('error');
     roomHint.textContent = accounts.current() ? `Skin ${skin.name} terbuka di level akun ${skin.level}.` : `Skin ${skin.name} terbuka di level akun ${skin.level}. Masuk atau daftar akun dulu.`;
     return;
@@ -96,17 +135,25 @@ cards.addEventListener('click', (e) => {
 
 function refreshCards(): void {
   const level = myLevel();
+  const items = myItems();
+  // penguasaan hero: hanya akun online (dari statistik per hero yang dicatat server)
+  const heroes = accounts.economy ? accounts.current()?.profile.heroes : undefined;
   for (const el of cards.children) {
     const id = (el as HTMLElement).dataset.id!;
     el.classList.toggle('selected', id === selectedHero);
     const active = skinOf(id);
     for (const chip of el.querySelectorAll<HTMLElement>('.skins [data-skin]')) {
       const skin = SKINS[Number(chip.dataset.skin)];
-      const locked = skin.id > 0 && skin.level > level; // skin asli selalu tersedia, juga untuk tamu
+      const locked = !skinUnlocked(skin.id, level, items); // skin asli selalu tersedia, juga untuk tamu
       chip.classList.toggle('on', skin.id === active);
       chip.classList.toggle('locked', locked);
-      chip.querySelector('small')!.textContent = locked ? `Lv ${skin.level}` : '';
+      // yang terkunci menyebut syaratnya: level akun, atau harga koin di toko
+      const need = chip.querySelector('small')!;
+      if (!locked) need.textContent = '';
+      else if (skin.price !== undefined) need.innerHTML = `${COIN}${skin.price}`;
+      else need.textContent = `Lv ${skin.level}`;
     }
+    el.querySelector('.hero-mastery')!.innerHTML = heroes ? masteryFor(heroes[id]) : '';
   }
 }
 refreshCards();
@@ -165,10 +212,65 @@ function refreshAccountBar(): void {
   $('acc-level').textContent = acc ? String(accountLevel(acc.profile.xp).level) : '–';
   // lambang tier hanya untuk akun yang memang punya tier (akun online); yang lain tanpa lambang
   $('acc-tier').innerHTML = acc && accounts.ranked ? tierBadgeFor(acc.profile.rp, false) : '';
+  // koin dan bingkai (cincin warna tier di sekeliling level): hanya akun online di server yang mendukungnya
+  const economy = acc && accounts.economy ? acc.profile : null;
+  $('acc-level').className = 'lv' + (economy ? frameClass(economy.frame) : '');
+  const coins = $('acc-coins');
+  coins.classList.toggle('hidden', !economy);
+  coins.innerHTML = economy ? coinText(economy.coins) : '';
+  $('store-btn').title = economy ? `Toko kosmetik · ${economy.coins} koin` : 'Toko kosmetik (koin dan toko hanya untuk akun online)';
+  // tanpa saldo koin tombol Toko lebih sempit, jadi teks di tombol profil boleh lebih lebar (lihat account.css)
+  $('account-bar').classList.toggle('no-coins', !economy);
   // pemain yang masuk memakai nama akunnya; tamu boleh mengetik nama bebas
   const nameInput = $<HTMLInputElement>('name-input');
   nameInput.classList.toggle('hidden', !!acc);
   if (acc) nameInput.value = acc.name;
+}
+
+/**
+ * Hadiah masuk harian di lobby: hari ke berapa dalam streak, hadiah hari ini, dan apakah sudah
+ * diklaim. Hanya akun online; tamu, akun di perangkat, dan server versi lama mendapat keterangan,
+ * bukan angka tiruan. Hari dan streak ditentukan server; di sini hanya ditampilkan.
+ */
+function refreshBonus(): void {
+  const el = $<HTMLButtonElement>('bonus-btn');
+  const acc = accounts.current();
+  el.className = '';
+  el.title = '';
+  if (!acc || !accounts.economy) {
+    el.classList.add('off');
+    el.textContent =
+      acc && accounts.kind === 'server'
+        ? accounts.online
+          ? 'Koin, hadiah harian & toko belum didukung server ini'
+          : 'Koin & hadiah harian: sambungkan ke server akun'
+        : 'Koin, hadiah harian & toko: hanya untuk akun online';
+    el.title = accounts.economyNote();
+    return;
+  }
+  const v = loginView(acc.profile.login, accounts.today());
+  if (v.claimed) {
+    el.classList.add('done');
+    el.innerHTML = `<b class="tick">&#10004;</b>Hadiah harian diklaim · ${v.streak} hari berturut-turut · besok ${coinText(v.next, true)}`;
+    el.title = 'Hadiah harian hari ini sudah diklaim. Kembali besok supaya streak-nya berlanjut.';
+  } else if (!accounts.online) {
+    el.classList.add('off');
+    el.innerHTML = `Hadiah harian hari ke-${v.streak} · ${coinText(v.coins, true)} · sambungkan ke server untuk klaim`;
+  } else {
+    el.classList.add('ready');
+    el.innerHTML = `<b class="tag">Klaim</b>Hadiah harian hari ke-${v.streak} · ${coinText(v.coins, true)}`;
+    el.title = `Klaim hadiah harian hari ke-${v.streak}: +${v.coins} koin`;
+  }
+}
+
+/** Ringkasan "Musim baru": sekali per musim yang ditutup, hanya di lobby dan bila tidak ada jendela lain yang terbuka. */
+let seasonNewsFor = '';
+function maybeSeasonNews(): void {
+  const acc = accounts.current();
+  const note = acc?.profile.seasonNote;
+  if (!acc || !note || isModalOpen() || $('lobby').classList.contains('hidden')) return;
+  const mark = `${acc.name}|${note}`;
+  if (seasonNewsFor !== mark && openSeasonNews(acc)) seasonNewsFor = mark;
 }
 
 function showAuth(): void {
@@ -185,8 +287,19 @@ function showLobby(): void {
   $('lobby').classList.remove('hidden');
   refreshAccountBar();
   refreshDaily();
+  refreshBonus();
   refreshSkins();
+  maybeSeasonNews();
 }
+// akun online berubah (koin, barang toko, gelar, kabar dari tab lain): tampilan lobby mengikuti
+accounts.subscribe(() => {
+  if ($('lobby').classList.contains('hidden')) return; // sedang bertanding, atau masih di layar masuk
+  refreshAccountBar();
+  refreshDaily();
+  refreshBonus();
+  refreshSkins();
+  maybeSeasonNews();
+});
 
 /**
  * Sambungan ke server sudah jelas (atau berganti): akun yang berlaku bisa berubah, mis. dari akun
@@ -299,6 +412,60 @@ $('rank-btn').addEventListener('click', () => {
   sound.unlock();
   sound.play('click');
   void openLeaderboard();
+});
+
+// ----- toko kosmetik dan hadiah masuk harian (akun online) -----
+/** Gambar hero itu dengan skin tertentu, untuk contoh di toko; potret yang dipakai lobby dan HUD tidak ikut berubah. */
+function previewSkin(heroId: string, skin: number): string {
+  const kept = PORTRAITS[heroId];
+  const src = renderPortraits([heroId], 240, 280, { [heroId]: skin })[heroId] ?? '';
+  if (kept) PORTRAITS[heroId] = kept;
+  else delete PORTRAITS[heroId];
+  return src;
+}
+function showShop(): void {
+  openShop({
+    hero: () => selectedHero,
+    skin: () => skinOf(selectedHero),
+    useSkin: (skin) => {
+      store.set('skin.' + selectedHero, String(skin));
+      repaintPortrait(selectedHero);
+      refreshCards();
+    },
+    preview: (skin) => previewSkin(selectedHero, skin),
+  });
+}
+$('store-btn').addEventListener('click', () => {
+  sound.unlock();
+  sound.play('click');
+  showShop();
+});
+const bonusBtn = $<HTMLButtonElement>('bonus-btn');
+bonusBtn.addEventListener('click', async () => {
+  sound.unlock();
+  const acc = accounts.current();
+  if (!acc || !accounts.economy) {
+    // bukan akun online: jendela Toko menjelaskan alasannya
+    sound.play('click');
+    showShop();
+    return;
+  }
+  if (loginView(acc.profile.login, accounts.today()).claimed || !accounts.online) {
+    sound.play('click');
+    roomHint.textContent = 'Hadiah harian: hari ke-1 sampai ke-7 memberi 20, 30, 40, 50, 60, 80, lalu 120 koin; sesudah itu 120 koin per hari. Bila satu hari terlewat, mulai lagi dari hari ke-1. Hari berganti pukul 00.00 WIB.';
+    return;
+  }
+  bonusBtn.disabled = true;
+  const r = await accounts.claimDaily(); // server yang menentukan hari, streak, dan hadiahnya
+  bonusBtn.disabled = false;
+  if (!r.ok) {
+    sound.play('error');
+    roomHint.textContent = r.error;
+    return;
+  }
+  sound.play(r.already ? 'click' : 'levelup');
+  roomHint.textContent = r.already ? 'Hadiah harian hari ini sudah diklaim.' : `Hadiah harian hari ke-${r.streak}: +${r.coins} koin. Kembali besok supaya streak-nya berlanjut.`;
+  refreshBonus();
 });
 
 // ----- teman: tombol dengan jumlah permintaan masuk, dan undangan ke room dari teman -----
@@ -568,6 +735,29 @@ for (const id of Object.keys(GAME_MODES) as GameMode[]) {
 }
 syncMode();
 
+// ----- ukuran tim -----
+let teamSize = [1, 2, 3].includes(Number(store.get('size'))) ? Number(store.get('size')) : 3;
+const sizePick = $('size-pick');
+function syncSize(): void {
+  for (const b of sizePick.querySelectorAll<HTMLButtonElement>('button')) b.classList.toggle('on', Number(b.dataset.size) === teamSize);
+}
+for (const n of [3, 2, 1]) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.size = String(n);
+  b.textContent = `${n}v${n}`;
+  b.title = `${n} lawan ${n}`;
+  b.addEventListener('click', () => {
+    teamSize = n;
+    store.set('size', String(n));
+    sound.play('click');
+    syncSize();
+    roomHint.textContent = `Room ${n} lawan ${n}: tiap tim ${n} hero; tempat yang kosong diisi bot sampai pemain lain masuk. Berlaku bila kamu pemain pertama di room.`;
+  });
+  sizePick.appendChild(b);
+}
+syncSize();
+
 // ----- talenta -----
 let selectedTalent = TALENTS[store.get('talent')] ? store.get('talent') : DEFAULT_TALENT;
 const talentPick = $('talent-pick');
@@ -593,21 +783,40 @@ for (const d of TALENT_LIST) {
 syncTalent();
 
 // ----- latihan bebas: pertandingan offline dengan alat bantu, walau server sedang tersambung -----
-askTraining(false); // tanda latihan dari pertandingan sebelumnya tidak boleh terbawa
+askTraining(false); // tanda latihan / tutorial dari pertandingan sebelumnya tidak boleh terbawa
+askTutorial(false);
 const trainBtn = $<HTMLButtonElement>('train-btn');
-trainBtn.addEventListener('click', async () => {
-  trainBtn.disabled = playBtn.disabled = true;
+const tutorialBtn = $<HTMLButtonElement>('tutorial-btn');
+// pemain yang belum pernah menjalani tutorial di perangkat ini: tombolnya disorot
+if (!tutorialDone()) tutorialBtn.classList.add('suggest');
+/** Mulai pertandingan di perangkat ini sendiri: latihan bebas, atau tutorial (klasik, bot Mudah). */
+async function startLocal(kind: 'latihan' | 'tutorial'): Promise<void> {
+  trainBtn.disabled = tutorialBtn.disabled = playBtn.disabled = true;
   sound.unlock();
   sound.play('click');
-  askTraining(true);
+  if (kind === 'latihan') askTraining(true);
+  else askTutorial(true);
   const name = accounts.current()?.name ?? (nameInput.value.trim() || 'Pemain');
   const t = await connect([]); // tanpa alamat server: simulasi lokal
-  const result = await t.join({ caps: CLIENT_CAPS, name, heroId: selectedHero, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel, mode: selectedMode, talent: selectedTalent });
+  const tutorial = kind === 'tutorial';
+  const result = await t.join({
+    caps: CLIENT_CAPS,
+    name,
+    heroId: selectedHero,
+    spell: selectedSpell,
+    skin: skinOf(selectedHero),
+    bots: tutorial ? 0 : botLevel,
+    mode: tutorial ? 'klasik' : selectedMode,
+    talent: selectedTalent,
+    size: tutorial ? 3 : teamSize,
+    emotes: emotesOwned(myItems()), // paket emote milik akun online tetap bisa dipakai di pertandingan di perangkat ini
+  });
   if (!result.ok) {
     askTraining(false);
+    askTutorial(false);
     status.className = 'off';
-    status.textContent = result.error ?? 'Gagal memulai latihan.';
-    trainBtn.disabled = playBtn.disabled = false;
+    status.textContent = result.error ?? 'Gagal memulai pertandingan di perangkat ini.';
+    trainBtn.disabled = tutorialBtn.disabled = playBtn.disabled = false;
     return;
   }
   // sambungan lobby ke server (bila ada) dilepas: pertandingan ini sepenuhnya di perangkat
@@ -618,7 +827,9 @@ trainBtn.addEventListener('click', async () => {
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
   new GameClient(t, toAuth, '');
   $('loading').classList.add('hidden');
-});
+}
+trainBtn.addEventListener('click', () => void startLocal('latihan'));
+tutorialBtn.addEventListener('click', () => void startLocal('tutorial'));
 
 playBtn.addEventListener('click', async () => {
   playBtn.disabled = true;
@@ -630,7 +841,8 @@ playBtn.addEventListener('click', async () => {
   if (!acc) store.set('name', name);
   const room = roomCode(roomInput.value);
   store.set('room', room);
-  const result = await t.join({ caps: CLIENT_CAPS, name, heroId: selectedHero, room, team: wantTeam, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel, mode: selectedMode, talent: selectedTalent });
+  // `emotes` hanya dipakai pertandingan offline; server online menetapkan jumlah emote dari akun pemain
+  const result = await t.join({ caps: CLIENT_CAPS, name, heroId: selectedHero, room, team: wantTeam, spell: selectedSpell, skin: skinOf(selectedHero), bots: botLevel, mode: selectedMode, talent: selectedTalent, size: teamSize, emotes: emotesOwned(myItems()) });
   if (!result.ok) {
     status.className = 'off';
     status.textContent = result.error ?? 'Gagal bergabung.';

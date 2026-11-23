@@ -5,6 +5,8 @@ import {
   BUSH_REVEAL_RANGE,
   BUSH_REVEAL_TIME,
   CHAT_MAX,
+  MAP_SIZE,
+  FREE_EMOTES,
   MAX_LEVEL,
   TALENTS,
   TALENT_LIST,
@@ -89,6 +91,8 @@ import { updateMinion, updateMonster, updateTitan, updateTower, separateMinions 
 import { Core, Hero, Minion, Monster, Tower, Unit, Ward } from './entities';
 import { castSkill, castSpell, orderAttack, orderMove, updateHero, useItem } from './heroLogic';
 
+/** Jarak antar titik grafik emas tim (detik). */
+const CHART_EVERY = 15;
 /** Berkah Golem: bonus damage (pecahan) dan lamanya (detik). */
 const GOLEM_BUFF = 0.2;
 const GOLEM_BUFF_TIME = 75;
@@ -108,6 +112,8 @@ export interface PlayerSession {
   afk?: Bot;
   /** Tingkat kemampuan client pemain ini (lihat CLIENT_CAPS); 0 = client lama. */
   caps?: number;
+  /** Jumlah emote yang boleh dipakai (awal daftar EMOTES); tanpa ini hanya yang gratis. */
+  emotes?: number;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -135,6 +141,10 @@ export class Game {
   private firstBlood = false;
   /** Lane yang tower terdalamnya sudah hancur (kunci: tim penyerang * 3 + lane), supaya diumumkan sekali saja. */
   private openLanes = new Set<number>();
+  /** Jumlah hero per tim di room ini (1, 2, atau 3); ditentukan pemain pertama, kembali ke 3 saat room kosong. */
+  teamSize = TEAM_SIZE;
+  /** Emas yang dikumpulkan tiap tim, dicatat tiap CHART_EVERY detik (untuk grafik di layar akhir). */
+  private goldLine: [number[], number[]] = [[], []];
   /** Mode latihan (hanya pertandingan offline di browser): bot pengganti pemain diam dimatikan, dan alat train* dipakai. */
   training = false;
   /** Bot yang sedang "diam" karena dimatikan lewat alat latihan. */
@@ -190,6 +200,7 @@ export class Game {
     this.openLanes.clear();
     this.alertAt.clear();
     this.sightTick = -1;
+    this.goldLine = [[], []];
     this.parkedBots = null;
     this.vote = null;
     this.voteNext = [0, 0];
@@ -287,13 +298,13 @@ export class Game {
   private fillBots(inherit?: Hero): void {
     for (const team of [0, 1] as Team[]) {
       let mine = this.heroes.filter((h) => h.team === team);
-      while (mine.length > TEAM_SIZE) {
+      while (mine.length > this.teamSize) {
         const bot = mine.find((h) => h.isBot);
         if (!bot) break;
         this.removeHero(bot);
         mine = this.heroes.filter((h) => h.team === team);
       }
-      while (mine.length < TEAM_SIZE) {
+      while (mine.length < this.teamSize) {
         const used = new Set(mine.map((h) => h.def.id));
         // bot memilih acak di antara hero yang belum dipakai timnya
         const pool = HERO_LIST.filter((d) => !used.has(d.id));
@@ -312,23 +323,26 @@ export class Game {
   // ---------------------------------------------------------------- players
 
   /** `wantTeam`: tim pilihan pemain; dipakai selama masih ada tempat, kalau tidak tim satunya. */
-  addPlayer(id: string, rawName: string, heroId: string, wantTeam?: Team, spell?: string, skin?: number, bots?: number, mode?: string, talent?: string): JoinResult {
+  addPlayer(id: string, rawName: string, heroId: string, wantTeam?: Team, spell?: string, skin?: number, bots?: number, mode?: string, talent?: string, size?: number): JoinResult {
     const def = HEROES[heroId];
     if (!def) return { ok: false, error: 'Hero tidak dikenal.' };
     if (this.players.has(id)) this.removePlayer(id);
     // pemain pertama di room menentukan mode pertandingan; dunia dibangun ulang bila modenya berganti
     if (this.players.size === 0) {
       const want: GameMode = mode === 'kilat' ? 'kilat' : 'klasik';
-      if (want !== this.mode) {
+      // ...dan ukuran tim (1v1, 2v2, atau 3v3)
+      const wantSize = size === 1 || size === 2 ? size : TEAM_SIZE;
+      if (want !== this.mode || wantSize !== this.teamSize) {
         this.mode = want;
+        this.teamSize = wantSize;
         this.setupWorld();
       }
     }
     const humans = [0, 0];
     for (const p of this.players.values()) humans[p.hero.team]++;
     let team: Team = wantTeam === 0 || wantTeam === 1 ? wantTeam : humans[0] <= humans[1] ? 0 : 1;
-    if (humans[team] >= TEAM_SIZE) team = team === 0 ? 1 : 0;
-    if (humans[team] >= TEAM_SIZE) return { ok: false, error: 'Room penuh.' };
+    if (humans[team] >= this.teamSize) team = team === 0 ? 1 : 0;
+    if (humans[team] >= this.teamSize) return { ok: false, error: 'Room penuh.' };
 
     const name = (String(rawName ?? '').trim() || 'Pemain').slice(0, 16);
     // Ambil alih slot bot (utamakan bot dengan hero yang sama) beserta level & gold-nya.
@@ -347,6 +361,7 @@ export class Game {
     this.players.set(id, { id, name, hero, known: new Set(), lastInput: this.time });
     this.fillBots();
     if (this.mode === 'kilat' && this.players.size === 1) this.emit({ k: 'msg', s: 'Mode Kilat: hanya lane tengah, semuanya dipercepat.' });
+    if (this.teamSize !== TEAM_SIZE && this.players.size === 1) this.emit({ k: 'msg', s: `Room ${this.teamSize} lawan ${this.teamSize}.` });
     this.emit({ k: 'msg', s: `${name} bergabung ke tim ${TEAM_NAMES[team]}` });
     return { ok: true, team };
   }
@@ -374,9 +389,10 @@ export class Game {
     this.removeHero(p.hero);
     if (this.players.size === 0) {
       this.botLevel = 1;
-      if (this.mode !== 'klasik') {
-        // dunia mode Kilat (tower lane tengah saja, hero level 3) tidak boleh tersisa untuk pemain berikutnya
+      if (this.mode !== 'klasik' || this.teamSize !== TEAM_SIZE) {
+        // dunia mode Kilat (tower lane tengah saja, hero level 3) atau room kecil tidak boleh tersisa untuk pemain berikutnya
         this.mode = 'klasik';
+        this.teamSize = TEAM_SIZE;
         this.setupWorld();
       }
     }
@@ -460,6 +476,12 @@ export class Game {
     this.emit({ k: 'msg', s: `Tim ${TEAM_NAMES[v.team]} menyerah. Tim ${TEAM_NAMES[this.winner]} menang!` });
   }
 
+  /** Tetapkan jumlah emote yang dimiliki pemain ini (dipanggil setelah addPlayer; server online mengisinya dari akun). */
+  setEmotes(playerId: string, count: unknown): void {
+    const p = this.players.get(playerId);
+    if (p) p.emotes = typeof count === 'number' && Number.isFinite(count) ? Math.max(FREE_EMOTES, Math.min(EMOTES.length, Math.floor(count))) : FREE_EMOTES;
+  }
+
   /** Catat tingkat kemampuan client pemain ini (dipanggil setelah addPlayer). */
   setCaps(playerId: string, caps: unknown): void {
     const p = this.players.get(playerId);
@@ -481,14 +503,18 @@ export class Game {
       const now = Date.now();
       if (kind < 0 || kind >= PINGS.length || now - (p.lastPing ?? 0) < 1500) return;
       p.lastPing = now;
-      this.emit({ k: 'ping', from: p.hero.id, name: p.hero.name, team: p.hero.team, x: r2(p.hero.x), z: r2(p.hero.z), kind });
+      // titik pilihan pemain (dijepit ke dalam peta), atau posisi hero-nya sendiri
+      const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+      const x = ok(cmd.x) && ok(cmd.z) ? Math.max(0, Math.min(MAP_SIZE, cmd.x)) : p.hero.x;
+      const z = ok(cmd.x) && ok(cmd.z) ? Math.max(0, Math.min(MAP_SIZE, cmd.z)) : p.hero.z;
+      this.emit({ k: 'ping', from: p.hero.id, name: p.hero.name, team: p.hero.team, x: r2(x), z: r2(z), kind });
       return;
     }
     if (cmd.t === 'emote') {
       // emote di atas kepala hero, terlihat semua pemain; dibatasi satu tiap 2 detik
       const kind = Number(cmd.kind) | 0;
       const now = Date.now();
-      if (kind < 0 || kind >= EMOTES.length || now - (p.lastEmote ?? 0) < 2000) return;
+      if (kind < 0 || kind >= (p.emotes ?? FREE_EMOTES) || now - (p.lastEmote ?? 0) < 2000) return; // emote paket hanya untuk pemiliknya
       p.lastEmote = now;
       this.emit({ k: 'emote', a: p.hero.id, kind });
       return;
@@ -622,6 +648,13 @@ export class Game {
       }
     }
 
+    if (this.time >= this.goldLine[0].length * CHART_EVERY) {
+      for (const team of [0, 1]) {
+        let sum = 0;
+        for (const h of this.heroes) if (h.team === team) sum += h.goldEarned;
+        this.goldLine[team].push(Math.round(sum));
+      }
+    }
     this.refreshSight();
     if (this.mode === 'kilat' && this.time >= KILAT.timeLimit) return this.endByTime();
     if (this.mode === 'kilat' && this.time >= KILAT.decayFrom && this.time - dt < KILAT.decayFrom) {
@@ -1296,8 +1329,10 @@ export class Game {
     m.sub = 'titan';
     m.name = 'Titan Astra';
     m.radius = 2.4;
-    m.maxHp = m.hp = Math.round(3600 + 300 * minutes);
-    m.attackDamage = Math.round(52 + 5 * minutes);
+    // room kecil: Titan lebih ringan, supaya satu atau dua hero masih bisa menumbangkannya
+    const few = this.teamSize === 1 ? 0.5 : this.teamSize === 2 ? 0.75 : 1;
+    m.maxHp = m.hp = Math.round((3600 + 300 * minutes) * few);
+    m.attackDamage = Math.round((52 + 5 * minutes) * (0.5 + few / 2));
     m.attackRange = 2.6;
     m.attackInterval = 1.3;
     m.moveSpeed = 5.2;
@@ -1342,6 +1377,7 @@ export class Game {
     if (team !== 0 && team !== 1) return;
     for (const h of this.heroes) {
       if (h.team !== team) continue;
+      h.titans++;
       this.addGold(h, TITAN_GOLD, h);
       this.addXp(h, TITAN_XP);
       if (h.alive) {
@@ -1539,9 +1575,11 @@ export class Game {
       snap.titan = [this.titan ? 0 : Math.max(1, Math.ceil(this.titanAt - now)), this.titanPit];
       if (this.mode !== 'klasik') snap.mode = this.mode;
       if (this.mode === 'kilat') snap.left = Math.max(0, Math.ceil(KILAT.timeLimit - now));
+      if (this.winner !== null && this.goldLine[0].length > 1) snap.chart = { every: CHART_EVERY, gold: this.goldLine };
     }
     snap.you.ward = Math.ceil(me.wardCd);
     snap.you.talent = me.talent;
+    snap.you.emotes = p.emotes ?? FREE_EMOTES;
     if (p.afk) snap.you.afk = 1;
     if (me.items.some((id) => ITEMS[id]?.active)) snap.you.itemCds = me.items.map((id) => (ITEMS[id]?.active ? Math.ceil(me.itemCd[id] ?? 0) : 0));
     if (me.buffUntil > now) snap.you.golem = Math.ceil(me.buffUntil - now);

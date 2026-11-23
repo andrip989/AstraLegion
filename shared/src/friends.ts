@@ -1,9 +1,9 @@
 // Daftar teman akun online: batasan, bentuk data, dan protokol "fr:*" client <-> server. Logika
 // murni (tanpa DOM maupun API Node), dipakai client dan server.
 //
-// Tidak ada pesan bebas di fitur ini: yang berpindah hanya nama akun, poin peringkat, status,
-// dan kode room. Semua yang diterima client dibersihkan dulu dengan cleanFriendList / cleanInvite.
-import { validateName, nameKey } from './account';
+// Tidak ada pesan bebas di fitur ini: yang berpindah hanya nama akun, poin peringkat, id gelar,
+// status, dan kode room. Semua yang diterima client dibersihkan dulu dengan cleanFriendList / cleanInvite.
+import { ITEM_ID, validateName, nameKey } from './account';
 import { roomCode } from './types';
 
 /** Teman paling banyak per akun. */
@@ -20,6 +20,8 @@ export interface FriendRow {
   /** Poin peringkat (untuk lencana tier). */
   rp: number;
   status: FriendStatus;
+  /** Gelar yang dipasang teman itu (id di TITLES, lihat titles.ts); tidak ada bila tanpa gelar. */
+  title?: string;
 }
 
 export interface FriendRequestRow {
@@ -106,7 +108,11 @@ export function cleanFriendList(raw: unknown): FriendList {
     return true;
   };
   each(raw.friends, FRIENDS_MAX, (f, seen) => {
-    if (isObj(f) && goodName(f.name) && fresh(f.name, seen)) out.friends.push({ name: f.name, rp: points(f.rp), status: cleanFriendStatus(f.status) });
+    if (!isObj(f) || !goodName(f.name) || !fresh(f.name, seen)) return;
+    const row: FriendRow = { name: f.name, rp: points(f.rp), status: cleanFriendStatus(f.status) };
+    // gelar: hanya id; teksnya diambil client dari tabel gelarnya sendiri
+    if (typeof f.title === 'string' && ITEM_ID.test(f.title)) row.title = f.title;
+    out.friends.push(row);
   });
   each(raw.incoming, FRIEND_REQUESTS_MAX, (r, seen) => {
     if (isObj(r) && goodName(r.name) && fresh(r.name, seen)) out.incoming.push({ name: r.name, rp: points(r.rp) });

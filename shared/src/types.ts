@@ -83,6 +83,8 @@ export interface SelfState {
   golem?: number;
   flow?: number;
   titan?: number;
+  /** Jumlah emote yang boleh dipakai pemain ini (awal daftar EMOTES); server lama: tidak ada (= FREE_EMOTES). */
+  emotes?: number;
   /** Talenta yang dibawa (server lama: tidak ada). */
   talent?: string;
   /** Mantra tempur yang dibawa dan sisa cooldown-nya dalam detik (server lama: tidak ada). */
@@ -135,6 +137,11 @@ export interface Snapshot {
   mode?: GameMode;
   /** Sisa waktu pertandingan dalam detik, untuk mode yang berbatas waktu; dikirim bersama `heroes`. */
   left?: number;
+  /**
+   * Hanya setelah pertandingan selesai: emas yang dikumpulkan tiap tim sepanjang pertandingan,
+   * satu titik tiap `every` detik (untuk grafik di layar akhir). `gold[0]` = tim Biru.
+   */
+  chart?: { every: number; gold: [number[], number[]] };
   /** Titan Astra: [detik sampai bangkit (0 = sedang hidup), indeks sarang]; dikirim bersama `heroes`. */
   titan?: [number, number];
   you: SelfState;
@@ -155,7 +162,7 @@ export type ClientCommand =
   // obrolan: ke semua pemain (`all`) atau hanya tim sendiri
   | { t: 'chat'; s: string; all?: boolean }
   // pesan cepat ke tim; `kind` = indeks di PINGS
-  | { t: 'ping'; kind: number }
+  | { t: 'ping'; kind: number; x?: number; z?: number } // x/z: titik yang ditandai (tanpa ini posisi hero)
   // mantra tempur, dibidik ke titik (x, z)
   | { t: 'spell'; x: number; z: number }
   // tanam suar penglihatan di (x, z); server menjepitnya ke jarak WARD_RANGE dari hero
@@ -168,7 +175,9 @@ export type ClientCommand =
   | { t: 'emote'; kind: number };
 
 /** Emote yang bisa ditampilkan di atas kepala hero. */
-export const EMOTES = ['👍', '😂', '😎', '😡', '😭', '🙏'] as const;
+export const EMOTES = ['👍', '😂', '😎', '😡', '😭', '🙏', '🔥', '💀', '🤝', '😴', '🎯', '👑'] as const;
+/** Emote yang dimiliki semua pemain (awal daftar EMOTES); sisanya adalah paket yang dibeli di toko. */
+export const FREE_EMOTES = 6;
 
 /** Panjang maksimum satu pesan obrolan. */
 export const CHAT_MAX = 120;
@@ -198,6 +207,11 @@ export interface JoinRequest {
   heroId: string;
   /** Tingkat kemampuan client (CLIENT_CAPS); client lama tidak mengirimnya. */
   caps?: number;
+  /**
+   * Jumlah emote yang dimiliki. Hanya dipakai pertandingan OFFLINE (akun di perangkat); server
+   * online mengabaikannya dan menetapkannya sendiri dari akun pemain.
+   */
+  emotes?: number;
   /** Kode room pribadi (lihat roomCode); kosong = room umum. */
   room?: string;
   /** Tim yang diinginkan. Tanpa ini, atau bila tim itu penuh, server yang memilihkan. */
@@ -212,6 +226,8 @@ export interface JoinRequest {
   session?: string;
   /** Talenta pilihan (id di TALENTS); tanpa ini dipakai talenta bawaan. */
   talent?: string;
+  /** Jumlah hero per tim (1, 2, atau 3); berlaku bila pemain ini yang pertama masuk room. Tanpa ini 3. */
+  size?: number;
   /** Mode pertandingan pilihan pemain; berlaku bila ia pemain pertama di room itu (seperti tingkat bot). */
   mode?: GameMode;
 }

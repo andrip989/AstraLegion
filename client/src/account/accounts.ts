@@ -11,11 +11,11 @@ import { applyMatch, emptyProfile, matchXp, validateName, validatePassword, type
 import type { ServerLink } from '../net/transport';
 import type { Friends } from './friends';
 import { todayKey } from './progress';
-import { ServerAccountStore, type Leaderboard } from './serverStore';
+import { ServerAccountStore, type EconomyResult, type Leaderboard } from './serverStore';
 
 export { accountLevel, matchXp, validateName, validatePassword } from '../../../shared/src';
 export type { Account, MatchOutcome, MatchRecord, Profile } from '../../../shared/src';
-export type { Leaderboard } from './serverStore';
+export type { EconomyResult, Leaderboard } from './serverStore';
 
 export type AuthResult = { ok: true; account: Account } | { ok: false; error: string };
 
@@ -236,7 +236,7 @@ class LocalAccountStore implements AccountStore {
       xp: r.xp,
       missions: r.missions,
       unlocked: r.unlocked.map((a) => a.name),
-      rankNote: 'Akun di perangkat ini tidak punya tier peringkat. Poin peringkat hanya dari pertandingan online dengan akun online.',
+      rankNote: 'Akun di perangkat ini tidak punya tier peringkat maupun koin. Keduanya hanya dari pertandingan online dengan akun online.',
     };
   }
 }
@@ -266,9 +266,27 @@ class AccountHub implements AccountStore {
    * tidak sempat menampilkan akun perangkat lalu berganti ke akun online sesaat kemudian.
    */
   private active: AccountStore = this.server.hasSaved() || readLastKind() === 'server' ? this.server : this.local;
+  private listeners = new Set<() => void>();
+
+  constructor() {
+    this.server.onChange = () => this.changed();
+  }
 
   private pick(): void {
     this.active = this.server.linked || this.server.hasSaved() ? this.server : this.local;
+  }
+
+  /**
+   * Dipanggil tiap kali akun online yang sedang masuk berubah (koin, barang toko, gelar, hasil
+   * pertandingan, atau kabar dari sambungan lain); mengembalikan fungsi untuk berhenti mendengarkan.
+   */
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private changed(): void {
+    for (const fn of [...this.listeners]) fn();
   }
 
   get kind(): 'server' | 'local' {
@@ -286,6 +304,46 @@ class AccountHub implements AccountStore {
    */
   get ranked(): boolean {
     return this.active === this.server && this.server.ranked;
+  }
+
+  /**
+   * Akun yang sedang dipakai punya koin, hadiah harian, toko, musim, gelar, bingkai, dan
+   * penguasaan hero: akun online di server yang mendukungnya (saat offline: salinan terakhirnya,
+   * hanya untuk dilihat). Tamu dan akun di perangkat tidak punya satu pun dari itu.
+   */
+  get economy(): boolean {
+    return this.active === this.server && this.server.economy && this.server.current() !== null;
+  }
+
+  /** Mengapa fitur akun online (koin, toko, gelar, ...) tidak tersedia sekarang; '' bila tersedia. */
+  economyNote(): string {
+    if (this.economy) return '';
+    if (this.active === this.server && this.server.current()) {
+      return this.online ? 'Server ini belum mendukung koin, toko, musim, dan gelar.' : 'Data koin dan toko belum diketahui. Sambungkan ke server akun untuk melihatnya.';
+    }
+    return this.current() ? 'Hanya untuk akun online. Akun yang sedang dipakai hanya ada di perangkat ini.' : 'Hanya untuk akun online. Masuk atau daftar akun online dulu.';
+  }
+
+  /** Id musim peringkat yang sedang berjalan menurut jam server ("YYYY-MM"). */
+  season(): string {
+    return this.server.season();
+  }
+
+  /** Klaim hadiah masuk harian (akun online, saat tersambung). */
+  claimDaily(): Promise<EconomyResult<{ coins: number; streak: number; already: boolean }>> {
+    return this.server.claimDaily();
+  }
+  /** Beli barang toko dengan koin. */
+  buy(item: string): Promise<EconomyResult<{ already: boolean }>> {
+    return this.server.buy(item);
+  }
+  /** Pasang gelar dan/atau bingkai ('' = lepas). */
+  equip(what: { title?: string; frame?: string }): Promise<EconomyResult> {
+    return this.server.equip(what);
+  }
+  /** Ringkasan penutupan musim sudah dilihat pemain. */
+  seenSeason(season: string): Promise<void> {
+    return this.server.seenSeason(season);
   }
 
   /** Daftar teman akun online yang sedang masuk (lihat friends.ts); tidak tersedia untuk tamu dan akun di perangkat. */

@@ -16,6 +16,7 @@ import {
   RECALL_TIME,
   SELL_REFUND,
   SKILL_KEYS,
+  FREE_EMOTES,
   GAME_MODES,
   TEAM_NAMES,
   TITAN_PITS,
@@ -106,8 +107,8 @@ export interface HudActions {
   openSettings(): void;
   /** Kirim pesan obrolan: ke semua pemain (`all`) atau hanya tim sendiri. */
   chat(text: string, all: boolean): void;
-  /** Kirim pesan cepat ke tim (indeks di PINGS). */
-  ping(kind: number): void;
+  /** Kirim pesan cepat ke tim (indeks di PINGS), di titik `at` bila diberikan (tanpa itu: posisi hero). */
+  ping(kind: number, at?: { x: number; z: number }): void;
   /** Tampilkan emote di atas kepala hero sendiri (indeks di EMOTES). */
   emote(kind: number): void;
   /** Tanam suar penglihatan (tombol layar). */
@@ -162,6 +163,8 @@ export class Hud {
   private announcing = false;
   private announceQueue: [string, string, string, VoiceLine?][] = [];
   private voteTimer = 0;
+  private chartDrawn = false;
+  private emoteCount = -1;
   /** Sisa waktu pertandingan (mode berbatas waktu), -1 = tidak dibatasi; dan mode yang sudah ditulis di lencana. */
   private timeLeft = -1;
   private mode = '';
@@ -267,6 +270,10 @@ export class Hud {
       this.togglePing(false);
     });
     pingMenu.appendChild(giveUp);
+    // grafik emas tim di layar akhir pertandingan, di atas papan skornya
+    const chart = document.createElement('div');
+    chart.id = 'gameover-chart';
+    $('gameover-board').before(chart);
     // panel pemungutan suara menyerah dan pemberitahuan bot pengganti
     const vote = document.createElement('div');
     vote.id = 'vote';
@@ -520,13 +527,25 @@ export class Hud {
 
   /** Buka/tutup menu pesan cepat. */
   togglePing(on = $('ping-menu').classList.contains('hidden')): void {
+    this.pingSpot = null; // menu dibuka/ditutup biasa: pesan cepat di posisi hero
+    $('ping-menu').classList.remove('at-spot');
     $('ping-menu').classList.toggle('hidden', !on);
     $('ping-btn').classList.toggle('on', on);
   }
 
   private sendPing(kind: number): void {
-    this.actions.ping(kind);
+    this.actions.ping(kind, this.pingSpot ?? undefined);
     this.togglePing(false);
+  }
+
+  /** Titik yang akan ditandai pesan cepat berikutnya (dipilih lewat minimap / Alt+klik); null = posisi hero. */
+  private pingSpot: { x: number; z: number } | null = null;
+
+  /** Buka menu pesan cepat untuk menandai titik (x, z). */
+  pingAt(x: number, z: number): void {
+    this.togglePing(true);
+    this.pingSpot = { x, z };
+    $('ping-menu').classList.add('at-spot');
   }
 
   // ------------------------------------------------------------ beli-cepat
@@ -784,6 +803,29 @@ export class Hud {
    * Tabel kedua tim: level, KDA, damage ke hero lawan, emas, item. `winner` (tim pemenang, di
    * layar akhir pertandingan) menandai MVP: pemain tim itu dengan kontribusi tertinggi.
    */
+  /** Gambar grafik garis emas tim (SVG) di layar akhir pertandingan. */
+  private drawChart(chart: NonNullable<Snapshot['chart']>, myTeam: number): void {
+    const [blue, red] = chart.gold;
+    const n = Math.min(blue.length, red.length);
+    if (n < 2) return;
+    const W = 560;
+    const H = 96;
+    const max = Math.max(1, ...blue.slice(0, n), ...red.slice(0, n));
+    const line = (list: number[]) =>
+      list
+        .slice(0, n)
+        .map((v, i) => `${i ? 'L' : 'M'}${((i / (n - 1)) * W).toFixed(1)} ${(H - 4 - (v / max) * (H - 10)).toFixed(1)}`)
+        .join(' ');
+    const lead = blue[n - 1] - red[n - 1];
+    const mine = myTeam === 0 ? lead : -lead;
+    const minutes = Math.max(1, Math.round(((n - 1) * chart.every) / 60));
+    const k = (v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v)));
+    $('gameover-chart').innerHTML =
+      `<div class="chart-head"><span>Emas tim sepanjang pertandingan (${minutes} menit)</span><b class="${mine >= 0 ? 'up' : 'down'}">${mine >= 0 ? 'Unggul' : 'Tertinggal'} ${k(Math.abs(mine))}</b></div>` +
+      `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="M0 ${H - 4}H${W}" class="axis"/><path d="${line(blue)}" class="blue"/><path d="${line(red)}" class="red"/></svg>` +
+      `<div class="chart-foot"><span class="blue">Biru ${k(blue[n - 1])}</span><span class="red">Merah ${k(red[n - 1])}</span></div>`;
+  }
+
   /** Nama pemain yang dibisukan di perangkat ini (sampai halaman dimuat ulang). */
   private muted = new Set<string>();
 
@@ -1028,6 +1070,12 @@ export class Hud {
       chip.classList.toggle('soon', wait > 0 && wait <= TITAN_WARN);
     }
     $('afk-note').classList.toggle('hidden', !y.afk || s.over !== null);
+    // emote: hanya yang dimiliki pemain yang ditampilkan (paket tambahan dibeli di toko)
+    const owned = y.emotes ?? FREE_EMOTES;
+    if (owned !== this.emoteCount) {
+      this.emoteCount = owned;
+      document.querySelectorAll<HTMLElement>('#ping-menu .emotes button').forEach((b, i) => b.classList.toggle('hidden', i >= owned));
+    }
     // suar: tombolnya hanya ada bila server memakai kabut perang; angkanya sisa jeda
     if (y.ward !== this.wardCd) {
       this.wardCd = y.ward;
@@ -1051,6 +1099,14 @@ export class Hud {
     $('score-red').textContent = String(s.score[1]);
     const t = Math.floor(s.t);
     const phase = dayPhase(s.t);
+    // layar akhir: grafik emas kedua tim sepanjang pertandingan (dikirim server setelah pertandingan selesai)
+    if (s.chart && s.over !== null && !this.chartDrawn) {
+      this.chartDrawn = true;
+      this.drawChart(s.chart, s.you.team);
+    } else if (s.over === null && this.chartDrawn) {
+      this.chartDrawn = false;
+      $('gameover-chart').innerHTML = '';
+    }
     // mode berbatas waktu (Kilat): jam menghitung mundur sisa waktunya, memerah di 30 detik terakhir
     if (s.left !== undefined) this.timeLeft = s.left;
     if (s.mode !== undefined && s.mode !== this.mode) {

@@ -273,9 +273,10 @@ class LocalTransport extends SnapshotInbox implements Transport {
   async join(req: JoinRequest): Promise<JoinResult> {
     const { Game } = await import('../../../server/src/game/Game');
     const game = (this.game = new Game());
-    const result = game.addPlayer('local', req.name, req.heroId, req.team, req.spell, req.skin, req.bots, req.mode, req.talent);
+    const result = game.addPlayer('local', req.name, req.heroId, req.team, req.spell, req.skin, req.bots, req.mode, req.talent, req.size);
     if (!result.ok) return result;
     game.setCaps('local', req.caps);
+    game.setEmotes('local', req.emotes);
 
     const step = 1 / TICK_RATE;
     let last = performance.now();

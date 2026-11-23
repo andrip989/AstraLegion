@@ -1,9 +1,10 @@
 // Akun pemain di server: penyimpanan (satu file JSON), kata sandi (scrypt bergaram), token sesi,
-// pembatas laju, papan peringkat, daftar teman, dan event Socket.IO "acc:*" dan "fr:*"
-// (protokolnya di shared/src/account.ts dan shared/src/friends.ts).
+// pembatas laju, papan peringkat, daftar teman, koin dan toko, musim peringkat, dan event
+// Socket.IO "acc:*" dan "fr:*" (protokolnya di shared/src/account.ts dan shared/src/friends.ts).
 //
 // Yang disimpan per akun hanya: nama, hash kata sandi, hash token sesi (dengan waktu terakhir
-// dipakai, untuk membuang sesi lama), statistik permainan, dan daftar teman beserta permintaan
+// dipakai, untuk membuang sesi lama), statistik permainan (termasuk koin, barang toko, gelar,
+// bingkai, dan riwayat musim), dan daftar teman beserta permintaan
 // pertemanannya (berupa nama akun). Alamat IP hanya dipakai di memori untuk membatasi percobaan
 // masuk; tidak ditulis ke file maupun ke log. Kata sandi dan token tidak pernah dicatat di log
 // atau dikirim balik. Kehadiran teman (offline / di lobby / sedang bermain) hanya ada di memori.
@@ -17,20 +18,33 @@ import {
   FRIENDS_MAX,
   FRIEND_REQUESTS_MAX,
   PASSWORD_MAX,
+  SKINS,
   accountLevel,
   applyMatch,
+  claimLogin,
   cleanProfile,
+  emotesOwned,
   emptyProfile,
   gameDay,
+  gameSeason,
   nameKey,
+  rollSeason,
   roomCode,
+  seasonPoints,
+  shopItem,
+  skinUnlocked,
+  titleById,
+  titleUnlocked,
   validateName,
   validatePassword,
   type AccBoard,
+  type AccBought,
+  type AccDaily,
   type AccFail,
   type AccHello,
   type AccMatch,
   type AccSignedIn,
+  type AccUpdated,
   type Account,
   type BoardRow,
   type FrInvite,
@@ -123,7 +137,8 @@ export class AccountDb {
   private byToken = new Map<string, string>();
   /** Nama yang sedang didaftarkan (hash-nya masih dihitung). */
   private reserved = new Set<string>();
-  private board: { rows: BoardRow[]; rank: Map<string, number> } | null = null;
+  /** Papan peringkat yang sudah dihitung, untuk musim `season`; null = perlu dihitung lagi. */
+  private board: { season: string; rows: BoardRow[]; rank: Map<string, number> } | null = null;
   private hashing = 0;
   private queue: (() => void)[] = [];
   /** Garam untuk nama yang tidak dikenal, supaya lama jawabannya sama dengan nama yang terdaftar. */
@@ -202,6 +217,8 @@ export class AccountDb {
   private adopt(data: unknown): number {
     if (!isObj(data) || data.v !== 1 || !Array.isArray(data.accounts)) throw new Error('bentuk file tidak dikenal');
     const now = Date.now();
+    const season = gameSeason(now);
+    let joined = 0;
     let skipped = 0;
     for (const raw of data.accounts) {
       const pw = isObj(raw) ? raw.pw : null;
@@ -230,12 +247,23 @@ export class AccountDb {
           if (tokens.length < MAX_TOKENS) tokens.push({ h: t.h, t: t.t });
         }
       }
+      // file lama belum punya koin, barang toko, gelar, bingkai, dan musim: cleanProfile mengisi nilai awalnya
+      const profile = cleanProfile(raw.profile);
+      // gelar yang terpasang harus dikenal dan memang sudah terbuka (file yang diedit tangan)
+      if (profile.title && !titleUnlocked(profile, profile.title)) profile.title = '';
+      // Akun dari sebelum musim ada: semuanya ikut musim yang sedang berjalan saat file ini pertama
+      // kali dimuat (tidak ada yang ditutup, poinnya utuh). Dengan begitu akun yang lama tidak
+      // masuk pun punya musim, dan poinnya ikut dibagi dua saat musim berganti seperti akun lain.
+      if (!profile.season) {
+        profile.season = season;
+        joined++;
+      }
       const account: StoredAccount = {
         name: raw.name as string,
         created: typeof raw.created === 'number' && Number.isFinite(raw.created) ? raw.created : now,
         pw: { algo: 'scrypt', n: pw.n as number, r: pw.r as number, p: pw.p as number, salt: pw.salt as string, hash: pw.hash as string },
         tokens,
-        profile: cleanProfile(raw.profile),
+        profile,
         // file lama belum punya daftar teman: mulai kosong
         friends: textList(raw.friends, FRIENDS_MAX),
         reqOut: textList(raw.reqOut, FRIEND_REQUESTS_MAX),
@@ -246,6 +274,7 @@ export class AccountDb {
     }
     this.mendFriends();
     this.board = null;
+    if (joined) this.touch(); // musim yang baru diisikan ikut disimpan
     return skipped;
   }
 
@@ -337,6 +366,22 @@ export class AccountDb {
     return { name: a.name, created: a.created, profile: a.profile };
   }
 
+  /**
+   * Server menyentuh akun ini (masuk, melanjutkan sesi, mencatat pertandingan, klaim, toko):
+   * pastikan akunnya berada di musim yang sedang berjalan. Bila musimnya berganti sejak terakhir
+   * disentuh, musim lamanya ditutup di sini, tepat satu kali (lihat rollSeason); karena semuanya
+   * berjalan dalam satu giliran tanpa menunggu apa pun, beberapa sambungan akun yang sama yang
+   * datang bersamaan tidak bisa menutupnya dua kali.
+   */
+  private sync(a: StoredAccount, now: number): void {
+    const season = a.profile.season;
+    const closed = rollSeason(a.profile, now);
+    if (a.profile.season === season) return;
+    this.board = null;
+    this.touch();
+    if (closed) console.log(`[akun] musim ${closed.id} ditutup untuk satu akun (tier ${closed.tier}, hadiah ${closed.coins} koin)`);
+  }
+
   account(key: string): Account | null {
     const a = this.byKey.get(key);
     return a ? this.publicOf(a) : null;
@@ -399,6 +444,7 @@ export class AccountDb {
         reqIn: [],
       };
       this.byKey.set(key, a);
+      this.sync(a, a.created); // akun baru langsung ikut musim yang sedang berjalan
       const token = this.issueToken(key, a);
       this.board = null;
       this.touch();
@@ -422,6 +468,7 @@ export class AccountDb {
     const want = Buffer.from(a.pw.hash, 'hex');
     if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return wrong;
     const token = this.issueToken(key, a);
+    this.sync(a, Date.now());
     this.touch();
     return { ok: true, key, account: this.publicOf(a), token };
   }
@@ -444,6 +491,7 @@ export class AccountDb {
       entry.t = now;
       this.touch();
     }
+    this.sync(a, now);
     return { key, account: this.publicOf(a) };
   }
 
@@ -473,24 +521,38 @@ export class AccountDb {
     const a = this.byKey.get(key);
     if (!a) return null;
     const now = Date.now();
+    // pertandingan pertama di musim baru: musim lama ditutup dulu, baru hasilnya dihitung di musim ini
+    this.sync(a, now);
     const r = applyMatch(a.profile, rec, now, gameDay(now), rank);
     this.board = null;
     this.touch();
-    return { account: this.publicOf(a), xp: r.xp, missions: r.missions.map((m) => m.id), unlocked: r.unlocked.map((u) => u.id), rp: r.rp };
+    return {
+      account: this.publicOf(a),
+      xp: r.xp,
+      missions: r.missions.map((m) => m.id),
+      unlocked: r.unlocked.map((u) => u.id),
+      rp: r.rp,
+      coins: r.coins,
+      coinsBonus: r.coinsBonus,
+    };
   }
 
-  private ranking(): { rows: BoardRow[]; rank: Map<string, number> } {
-    if (!this.board) {
+  private ranking(): { season: string; rows: BoardRow[]; rank: Map<string, number> } {
+    const season = gameSeason(Date.now());
+    if (!this.board || this.board.season !== season) {
+      // akun yang belum disentuh sejak musim berganti tampil dengan poin yang akan ia punya begitu musimnya ditutup
+      const points = (a: StoredAccount) => seasonPoints(a.profile, season);
       const list = [...this.byKey.entries()].sort(
-        ([, a], [, b]) =>
-          b.profile.rp - a.profile.rp || b.profile.xp - a.profile.xp || b.profile.wins - a.profile.wins || a.created - b.created || (a.name < b.name ? -1 : 1),
+        ([, a], [, b]) => points(b) - points(a) || b.profile.xp - a.profile.xp || b.profile.wins - a.profile.wins || a.created - b.created || (a.name < b.name ? -1 : 1),
       );
       const rank = new Map<string, number>();
       const rows = list.map(([key, a], i): BoardRow => {
         rank.set(key, i + 1);
-        return { rank: i + 1, name: a.name, rp: a.profile.rp, level: accountLevel(a.profile.xp).level, xp: a.profile.xp, wins: a.profile.wins, matches: a.profile.matches };
+        const row: BoardRow = { rank: i + 1, name: a.name, rp: points(a), level: accountLevel(a.profile.xp).level, xp: a.profile.xp, wins: a.profile.wins, matches: a.profile.matches };
+        if (a.profile.title) row.title = a.profile.title;
+        return row;
       });
-      this.board = { rows, rank };
+      this.board = { season, rows, rank };
     }
     return this.board;
   }
@@ -499,7 +561,96 @@ export class AccountDb {
   leaderboard(key: string | null): AccBoard {
     const b = this.ranking();
     const mine = key ? b.rank.get(key) : undefined;
-    return { ok: true, top: b.rows.slice(0, BOARD_SIZE), me: mine ? b.rows[mine - 1] : null, total: b.rows.length };
+    return { ok: true, top: b.rows.slice(0, BOARD_SIZE), me: mine ? b.rows[mine - 1] : null, total: b.rows.length, season: b.season };
+  }
+
+  // ---- koin, hadiah harian, toko, gelar, bingkai
+  //
+  // Semua di bawah ini berjalan dalam satu giliran (tanpa menunggu apa pun di antara pemeriksaan
+  // dan perubahan), jadi permintaan yang datang bersamaan (klik ganda, beberapa sambungan,
+  // permintaan yang diulang) diproses satu per satu: tidak ada yang terpotong dua kali dan saldo
+  // tidak pernah di bawah 0.
+
+  /** Klaim hadiah masuk harian; hari dan streak ditentukan jam server. */
+  claimDaily(key: string): AccDaily | AccFail {
+    const a = this.byKey.get(key);
+    if (!a) return fail('Akun tidak ditemukan.');
+    const now = Date.now();
+    this.sync(a, now);
+    const r = claimLogin(a.profile, gameDay(now));
+    if (!r.already) this.touch();
+    return { ok: true, account: this.publicOf(a), coins: r.coins, streak: r.streak, ...(r.already ? { already: true as const } : {}) };
+  }
+
+  /** Beli satu barang toko dengan koin. Barang yang sudah dimiliki dijawab berhasil tanpa memotong apa pun. */
+  buy(key: string, itemId: unknown): AccBought | AccFail {
+    const a = this.byKey.get(key);
+    if (!a) return fail('Akun tidak ditemukan.');
+    const item = shopItem(itemId);
+    if (!item) return fail('Barang itu tidak ada di toko.');
+    this.sync(a, Date.now());
+    const p = a.profile;
+    if (p.owned.includes(item.id)) return { ok: true, account: this.publicOf(a), item: item.id, already: true };
+    if (p.coins < item.price) return fail(`Koin belum cukup: ${item.name} seharga ${item.price} koin, dan kamu punya ${p.coins}.`);
+    p.coins -= item.price;
+    p.owned.push(item.id);
+    this.touch();
+    console.log(`[akun] pembelian toko: ${item.id}`);
+    return { ok: true, account: this.publicOf(a), item: item.id };
+  }
+
+  /**
+   * Pasang gelar dan/atau bingkai ('' = lepas). Gelar harus dikenal dan syaratnya sudah terpenuhi;
+   * bingkai harus sudah dimiliki. Bila salah satunya ditolak, tidak ada yang berubah.
+   */
+  equip(key: string, d: Record<string, unknown>): AccUpdated | AccFail {
+    const a = this.byKey.get(key);
+    if (!a) return fail('Akun tidak ditemukan.');
+    const title = typeof d.title === 'string' && d.title.length <= 32 ? d.title : undefined;
+    const frame = typeof d.frame === 'string' && d.frame.length <= 32 ? d.frame : undefined;
+    if (title === undefined && frame === undefined) return fail('Pilih gelar atau bingkai yang ingin dipasang.');
+    this.sync(a, Date.now());
+    const p = a.profile;
+    if (title && !titleUnlocked(p, title)) return fail(titleById(title) ? 'Gelar itu belum terbuka.' : 'Gelar itu tidak dikenal.');
+    if (frame && !p.frames.includes(frame)) return fail('Bingkai itu belum kamu miliki.');
+    if ((title !== undefined && title !== p.title) || (frame !== undefined && frame !== p.frame)) {
+      if (title !== undefined) p.title = title;
+      if (frame !== undefined) p.frame = frame;
+      this.board = null; // gelar ikut tampil di papan peringkat
+      this.touch();
+    }
+    return { ok: true, account: this.publicOf(a) };
+  }
+
+  /** Pemain sudah melihat ringkasan penutupan musim `season`: tandanya dihapus supaya tidak tampil lagi. */
+  seen(key: string, season: unknown): AccUpdated | AccFail {
+    const a = this.byKey.get(key);
+    if (!a) return fail('Akun tidak ditemukan.');
+    if (a.profile.seasonNote !== undefined && a.profile.seasonNote === season) {
+      delete a.profile.seasonNote;
+      this.touch();
+    }
+    return { ok: true, account: this.publicOf(a) };
+  }
+
+  /**
+   * Skin yang benar-benar dipakai saat bergabung ke pertandingan. Akun: skin yang belum ia punya
+   * (level belum cukup, atau skin premium yang belum dibeli) diganti skin asli. Tamu (`key` null):
+   * skin gratis diteruskan seperti sebelumnya, tetapi skin premium tidak (tamu tidak bisa membeli).
+   */
+  joinSkin(key: string | null, skin: unknown): number | undefined {
+    if (typeof skin !== 'number' || !Number.isFinite(skin)) return undefined;
+    const def = SKINS[skin | 0];
+    if (!def) return undefined;
+    if (!key) return def.price !== undefined ? 0 : skin;
+    const a = this.byKey.get(key);
+    return a && skinUnlocked(def.id, accountLevel(a.profile.xp).level, a.profile.owned) ? def.id : 0;
+  }
+
+  /** Jumlah emote yang boleh dipakai akun ini di pertandingan (paket emote dari toko); undefined = hanya yang gratis. */
+  emotes(key: string | null): number | undefined {
+    const a = key ? this.byKey.get(key) : undefined;
+    return a ? emotesOwned(a.profile.owned) : undefined;
   }
 
   // ---- daftar teman
@@ -521,13 +672,14 @@ export class AccountDb {
     const a = this.byKey.get(key);
     const out: FriendList = { friends: [], incoming: [], outgoing: [] };
     if (!a) return out;
+    const season = gameSeason(Date.now());
     for (const k of a.friends) {
       const f = this.byKey.get(k);
-      if (f) out.friends.push({ name: f.name, rp: f.profile.rp, status: status(k) });
+      if (f) out.friends.push({ name: f.name, rp: seasonPoints(f.profile, season), status: status(k), ...(f.profile.title ? { title: f.profile.title } : {}) });
     }
     for (const k of a.reqIn) {
       const f = this.byKey.get(k);
-      if (f) out.incoming.push({ name: f.name, rp: f.profile.rp });
+      if (f) out.incoming.push({ name: f.name, rp: seasonPoints(f.profile, season) });
     }
     out.outgoing = [...a.reqOut];
     return out;
@@ -685,6 +837,8 @@ const friendAdds = new Limiter(10, 10 * 60_000);
 const friendPair = new Limiter(2, 60 * 60_000);
 /** Undangan ke room dari satu akun ke teman yang sama. */
 const invitePair = new Limiter(1, 10_000);
+/** Klaim hadiah harian, pembelian toko, dan pemasangan gelar/bingkai per akun, dari semua sambungannya. */
+const economyByAccount = new Limiter(30, 60_000);
 
 /** Percobaan masuk/daftar per socket per menit, dan semua event akun dan teman per socket per 10 detik. */
 const SOCKET_AUTH_MAX = 6;
@@ -966,6 +1120,31 @@ export function serveAccounts(socket: Socket, db: AccountDb, social: Social, onS
   });
 
   on('acc:board', () => db.leaderboard(key));
+
+  // ---- koin, hadiah harian, toko, gelar, bingkai (hanya akun online; semuanya diputuskan di AccountDb)
+
+  /**
+   * Satu permintaan ekonomi dari akun yang masuk di socket ini. Sambungan lain milik akun yang
+   * sama (tab atau perangkat lain) dikabari akun terbarunya, supaya saldonya tidak tertinggal.
+   */
+  const economy = <T extends AccUpdated & { already?: true }>(what: string, run: (me: string) => T | AccFail): T | AccFail => {
+    if (!key) return fail(`${what} hanya untuk akun online. Masuk atau daftar dulu.`);
+    const me = key;
+    const wait = economyByAccount.wait(me);
+    if (wait) return rate(wait, 'Terlalu banyak permintaan.');
+    economyByAccount.hit(me);
+    const r = run(me);
+    if (r.ok && !r.already) {
+      const news: AccUpdated = { ok: true, account: r.account };
+      social.emit(me, 'acc:update', news, socket);
+    }
+    return r;
+  };
+
+  on('acc:daily', () => economy('Hadiah harian', (me) => db.claimDaily(me)));
+  on('acc:buy', (d) => economy('Toko', (me) => db.buy(me, d.item)));
+  on('acc:equip', (d) => economy('Gelar dan bingkai', (me) => db.equip(me, d)));
+  on('acc:seen', (d) => economy('Musim peringkat', (me) => db.seen(me, d.season)));
 
   // ---- daftar teman (protokolnya di shared/src/friends.ts)
 

@@ -1,8 +1,11 @@
 // Akun pemain: bentuk profil, rumus XP dan level akun, aturan nama & kata sandi, penerapan satu
-// hasil pertandingan ke profil, dan protokol akun client <-> server. Logika murni (tanpa DOM
-// maupun API Node), dipakai bersama oleh client (akun di perangkat) dan server (akun online)
-// supaya keduanya menghitung dengan cara yang persis sama.
+// hasil pertandingan ke profil, penutupan musim peringkat, dan protokol akun client <-> server.
+// Logika murni (tanpa DOM maupun API Node), dipakai bersama oleh client (akun di perangkat) dan
+// server (akun online) supaya keduanya menghitung dengan cara yang persis sama. Tabel koin dan
+// toko ada di economy.ts, musim dan bingkai di season.ts, gelar di titles.ts.
+import { COINS_MAX, COINS_MISSION, matchCoins, shopItem, type LoginState } from './economy';
 import { ACHIEVEMENTS, applyMatchToDaily, missionById, unlockedIds, type Achievement, type DailyState } from './progress';
+import { SEASONS_MAX, SEASON_RE, SEASON_REWARDS, seasonCarry, seasonOf, type SeasonRecord } from './season';
 
 export interface MatchRecord {
   /** Waktu selesai (ms sejak epoch). */
@@ -23,8 +26,12 @@ export interface MatchRecord {
   left?: boolean;
 }
 
-/** Hasil satu pertandingan sebelum dicatat (waktu, XP, dan poin peringkatnya diisi saat dicatat). */
-export type MatchResult = Omit<MatchRecord, 'xp' | 't' | 'rp'>;
+/**
+ * Hasil satu pertandingan sebelum dicatat (waktu, XP, dan poin peringkatnya diisi saat dicatat).
+ * `titans`: berapa kali tim pemain ini menumbangkan Titan Astra di pertandingan itu; hanya diisi
+ * server dari simulasinya, dan hanya masuk ke total di profil (tidak ke riwayat).
+ */
+export type MatchResult = Omit<MatchRecord, 'xp' | 't' | 'rp'> & { titans?: number };
 
 export interface Profile {
   matches: number;
@@ -44,6 +51,30 @@ export interface Profile {
   bestKills?: number;
   /** Kemajuan misi harian (lihat progress.ts). */
   daily?: DailyState;
+  // ---- Yang di bawah ini hanya berarti di akun online, dan hanya diubah server (koin, toko,
+  // musim, gelar; lihat economy.ts, season.ts, titles.ts). Akun lama dan akun di perangkat:
+  // nilai awalnya (0, kosong).
+  /** Koin. */
+  coins: number;
+  /** Barang toko yang dimiliki (id di SHOP_ITEMS). */
+  owned: string[];
+  /** Gelar yang dipasang (id di TITLES); '' = tanpa gelar. */
+  title: string;
+  /** Bingkai yang dimiliki (id tier; hadiah tier akhir musim) dan yang dipasang ('' = tanpa bingkai). */
+  frames: string[];
+  frame: string;
+  /** Berapa kali tim pemain ini menumbangkan Titan Astra, sepanjang waktu. */
+  titans: number;
+  /** Poin peringkat tertinggi yang pernah dicapai (akun lama: mulai dari poinnya saat itu). */
+  peak: number;
+  /** Hadiah masuk harian: klaim terakhir dan streak-nya. */
+  login?: LoginState;
+  /** Musim ("YYYY-MM") tempat poin peringkat sekarang berada; belum ada sampai server menyentuh akun ini. */
+  season?: string;
+  /** Musim yang sudah ditutup (terbaru di depan). */
+  seasons: SeasonRecord[];
+  /** Id musim (= seasons[0].id) yang ringkasan penutupannya belum dilihat pemain. */
+  seasonNote?: string;
 }
 
 export interface Account {
@@ -68,12 +99,34 @@ export interface MatchOutcome {
   rank?: RankOutcome;
   /** Terisi bila pertandingan ini dicatat tetapi tidak punya poin peringkat (mis. akun di perangkat): alasannya. */
   rankNote?: string;
+  /** Koin dari pertandingan ini dan dari misi harian yang tercapai (hanya pertandingan online dengan akun online). */
+  coins?: number;
+  coinsBonus?: number;
 }
 
 /** Jumlah pertandingan terakhir yang disimpan di riwayat. */
 export const HISTORY_MAX = 20;
 
-export const emptyProfile = (): Profile => ({ matches: 0, wins: 0, kills: 0, deaths: 0, assists: 0, xp: 0, rp: 0, playSeconds: 0, heroes: {}, history: [] });
+export const emptyProfile = (): Profile => ({
+  matches: 0,
+  wins: 0,
+  kills: 0,
+  deaths: 0,
+  assists: 0,
+  xp: 0,
+  rp: 0,
+  playSeconds: 0,
+  heroes: {},
+  history: [],
+  coins: 0,
+  owned: [],
+  title: '',
+  frames: [],
+  frame: '',
+  titans: 0,
+  peak: 0,
+  seasons: [],
+});
 
 /** XP akun dari satu pertandingan. */
 export function matchXp(rec: { win: boolean; k: number; a: number; dur: number }): number {
@@ -216,16 +269,65 @@ export function gameDay(ms: number): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
+/** Id musim peringkat ("YYYY-MM") untuk waktu `ms`: satu bulan kalender menurut waktu permainan. */
+export function gameSeason(ms: number): string {
+  return seasonOf(gameDay(ms));
+}
+
+// ---------------------------------------------------------- musim peringkat
+
+/**
+ * Poin peringkat akun ini di musim `season`. Akun yang musimnya belum ditutup (belum disentuh
+ * server sejak musim berganti) ditampilkan dengan poin yang akan ia punya begitu ditutup, supaya
+ * papan peringkat dan daftar teman tidak mencampur poin musim lalu dengan poin musim ini.
+ */
+export function seasonPoints(p: Profile, season: string): number {
+  return p.season && p.season < season ? seasonCarry(p.rp) : p.rp;
+}
+
+/**
+ * Pastikan profil `p` berada di musim yang berlaku pada waktu `now` (profil diubah langsung).
+ * Akun yang belum punya musim (akun baru, atau akun dari sebelum musim ada) langsung ikut musim
+ * ini tanpa ada yang ditutup. Bila musimnya sudah berganti, musim terakhir yang diikuti akun ini
+ * ditutup, tepat satu kali: tier dan poin akhirnya masuk riwayat, hadiah koin menurut tier
+ * dibayarkan, bingkai tier itu diberikan, dan poin peringkat dibagi dua (dibulatkan ke bawah).
+ * Mengembalikan catatan musim yang ditutup, atau null bila tidak ada yang ditutup.
+ *
+ * Hanya dipanggil server (akun di perangkat tidak punya musim). Akun yang melewatkan beberapa
+ * musim sekaligus tetap ditutup satu kali saja: yang ditutup adalah musim terakhir yang ia ikuti.
+ */
+export function rollSeason(p: Profile, now: number): SeasonRecord | null {
+  const current = gameSeason(now);
+  if (!p.season) {
+    p.season = current;
+    return null;
+  }
+  // p.season > current hanya terjadi bila jam server mundur: tidak ada yang ditutup
+  if (p.season >= current) return null;
+  const tier = rankTier(p.rp).tier;
+  const closed: SeasonRecord = { id: p.season, rp: Math.max(0, Math.floor(p.rp || 0)), tier: tier.id, coins: SEASON_REWARDS[tier.id] ?? 0 };
+  p.seasons = [closed, ...p.seasons.filter((s) => s.id !== closed.id)].slice(0, SEASONS_MAX);
+  p.coins = Math.min(COINS_MAX, p.coins + closed.coins);
+  if (!p.frames.includes(tier.id)) p.frames.push(tier.id);
+  // bingkai pertama langsung terpasang; sesudah itu pilihan pemain tidak diubah
+  if (!p.frame) p.frame = tier.id;
+  p.rp = seasonCarry(closed.rp);
+  p.season = current;
+  p.seasonNote = closed.id;
+  return closed;
+}
+
 // ----------------------------------------------------- mencatat pertandingan
 
 /**
  * Terapkan satu hasil pertandingan ke profil `p` (diubah langsung): statistik, XP, riwayat, misi
  * hari `day`, dan pencapaian. Inilah satu-satunya tempat hitungan itu dilakukan.
  *
- * `rank` hanya diisi server untuk pertandingan online akun online: poin peringkat ikut berubah.
- * Tanpa `rank` (akun di perangkat) poin peringkat tidak disentuh. Pertandingan yang ditinggalkan
- * (`rec.left`) dicatat sebagai kalah tanpa XP dan tanpa kemajuan misi, supaya keluar-masuk
- * pertandingan tidak bisa dipakai mengumpulkan XP.
+ * `rank` hanya diisi server untuk pertandingan online akun online: poin peringkat ikut berubah,
+ * dan koin diberikan (menang/kalah, mode Kilat lebih kecil, ditambah COINS_MISSION per misi
+ * harian yang tercapai). Tanpa `rank` (akun di perangkat) poin peringkat dan koin tidak disentuh.
+ * Pertandingan yang ditinggalkan (`rec.left`) dicatat sebagai kalah tanpa XP, tanpa koin, dan
+ * tanpa kemajuan misi, supaya keluar-masuk pertandingan tidak bisa dipakai mengumpulkan XP.
  */
 export function applyMatch(
   p: Profile,
@@ -233,7 +335,7 @@ export function applyMatch(
   now: number,
   day: string,
   rank?: RankContext,
-): { xp: number; missions: { id: string; text: string; xp: number }[]; unlocked: Achievement[]; rp: number } {
+): { xp: number; missions: { id: string; text: string; xp: number }[]; unlocked: Achievement[]; rp: number; coins: number; coinsBonus: number } {
   const left = rec.left === true;
   const win = rec.win && !left;
   const xp = left ? 0 : matchXp(rec);
@@ -254,6 +356,7 @@ export function applyMatch(
     const had = Math.max(0, p.rp || 0);
     p.rp = Math.max(0, had + rankChange(win, rank));
     rp = p.rp - had;
+    p.peak = Math.max(p.peak || 0, p.rp);
   }
   const entry: MatchRecord = { hero: rec.hero, win, k: rec.k, d: rec.d, a: rec.a, dur: rec.dur, mode: rec.mode, xp, t: now };
   if (rank) entry.rp = rp;
@@ -261,8 +364,17 @@ export function applyMatch(
   p.history = [entry, ...p.history].slice(0, HISTORY_MAX);
   p.bestKills = Math.max(p.bestKills ?? 0, rec.k);
   const missions = left ? [] : applyMatchToDaily(p, rec, day);
+  // koin dan hitungan Titan: hanya pertandingan online yang dicatat penuh oleh server
+  let coins = 0;
+  let coinsBonus = 0;
+  if (rank && !left) {
+    coins = matchCoins(win, rank.quick === true);
+    coinsBonus = missions.length * COINS_MISSION;
+    p.coins = Math.min(COINS_MAX, (p.coins || 0) + coins + coinsBonus);
+    p.titans = (p.titans || 0) + int(rec.titans, 99);
+  }
   const unlocked = ACHIEVEMENTS.filter((a) => !before.has(a.id) && a.value(p) >= a.goal);
-  return { xp, missions, unlocked, rp };
+  return { xp, missions, unlocked, rp, coins, coinsBonus };
 }
 
 // --------------------------------------------------------- pembersihan data
@@ -270,7 +382,10 @@ export function applyMatch(
 const int = (v: unknown, max = 1e12): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
 const HERO_ID = /^[A-Za-z0-9_-]{1,32}$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Bentuk id gelar (dan id pendek lain yang berasal dari tabel milik game). */
+export const ITEM_ID = /^[a-z0-9_]{1,24}$/;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isTierId = (v: unknown): v is string => typeof v === 'string' && RANK_TIERS.some((t) => t.id === v);
 
 /**
  * Bentuk profil yang pasti benar dari data yang tidak dipercaya (file data yang diedit tangan,
@@ -325,6 +440,34 @@ export function cleanProfile(raw: unknown): Profile {
     }
     p.daily = state;
   }
+  // ---- koin, toko, gelar, bingkai, musim (akun lama belum punya: nilai awal dari emptyProfile)
+  p.coins = int(raw.coins, COINS_MAX);
+  if (Array.isArray(raw.owned)) {
+    for (const id of raw.owned.slice(0, 64)) if (shopItem(id) && !p.owned.includes(id as string)) p.owned.push(id as string);
+  }
+  // gelar: di sini hanya dipastikan berbentuk id; apakah gelarnya dikenal dan sudah terbuka
+  // diperiksa pemakainya (server saat memuat dan memasang, client saat menampilkan; lihat titles.ts)
+  if (typeof raw.title === 'string' && ITEM_ID.test(raw.title)) p.title = raw.title;
+  if (Array.isArray(raw.frames)) {
+    for (const id of raw.frames.slice(0, 32)) if (isTierId(id) && !p.frames.includes(id)) p.frames.push(id);
+  }
+  if (typeof raw.frame === 'string' && p.frames.includes(raw.frame)) p.frame = raw.frame;
+  p.titans = int(raw.titans);
+  p.peak = Math.max(int(raw.peak, 1e9), p.rp); // akun lama: poin tertingginya mulai dari poin sekarang
+  const login = raw.login;
+  if (isObj(login) && typeof login.day === 'string' && DAY_RE.test(login.day)) {
+    const streak = Math.max(1, int(login.streak, 1e6));
+    p.login = { day: login.day, streak, best: Math.max(streak, int(login.best, 1e6)) };
+  }
+  if (typeof raw.season === 'string' && SEASON_RE.test(raw.season)) p.season = raw.season;
+  if (Array.isArray(raw.seasons)) {
+    for (const s of raw.seasons.slice(0, SEASONS_MAX)) {
+      if (!isObj(s) || typeof s.id !== 'string' || !SEASON_RE.test(s.id) || p.seasons.some((x) => x.id === s.id)) continue;
+      const rp = int(s.rp, 1e9);
+      p.seasons.push({ id: s.id, rp, tier: isTierId(s.tier) ? s.tier : rankTier(rp).tier.id, coins: int(s.coins, 1e6) });
+    }
+  }
+  if (typeof raw.seasonNote === 'string' && p.seasons[0]?.id === raw.seasonNote) p.seasonNote = raw.seasonNote;
   return p;
 }
 
@@ -343,17 +486,27 @@ export function cleanAccount(raw: unknown): Account | null {
 //   acc:resume   { token }           -> AccSignedIn | AccFail   (tetap masuk setelah halaman dimuat ulang)
 //   acc:logout   { token }           -> { ok: true }            (token itu dicabut)
 //   acc:board    {}                  -> AccBoard | AccFail      (papan peringkat)
-// dan satu event dari server: acc:match (AccMatch) saat pertandingan online pemain itu selesai.
-// Client tidak punya event untuk mengirim statistik: hasil pertandingan dicatat server sendiri.
+// Koin, toko, gelar, dan musim (protokol versi 3; hanya untuk socket yang sudah masuk akun):
+//   acc:daily    {}                  -> AccDaily | AccFail      (klaim hadiah masuk harian)
+//   acc:buy      { item }            -> AccBought | AccFail     (beli barang toko dengan koin)
+//   acc:equip    { title?, frame? }  -> AccUpdated | AccFail    (pasang gelar / bingkai; '' = lepas)
+//   acc:seen     { season }          -> AccUpdated | AccFail    (ringkasan "Musim baru" sudah dilihat)
+// Event dari server:
+//   acc:match  (AccMatch)   pertandingan online pemain itu selesai
+//   acc:update (AccUpdated) akun berubah lewat sambungan lain milik akun yang sama (tab/perangkat lain)
+// Client tidak punya event untuk mengirim statistik, koin, atau kepemilikan: hasil pertandingan
+// dicatat server sendiri, dan harga, saldo, serta syarat tiap barang dan gelar diperiksa server.
 // Event daftar teman ("fr:*") ada di friends.ts.
 //
 // Versi protokol (AccHello.v): 1 = akun dan papan peringkat; 2 = ditambah tier peringkat (poin
-// `rp` di profil, papan, dan acc:match) dan daftar teman. Client menyembunyikan keduanya di
-// server versi 1.
+// `rp` di profil, papan, dan acc:match) dan daftar teman; 3 = ditambah koin, hadiah harian, toko,
+// musim, gelar, dan bingkai. Client menyembunyikan yang belum ada di server versi lama.
 
-export const ACC_PROTOCOL = 2;
+export const ACC_PROTOCOL = 3;
 /** Versi protokol pertama yang punya tier peringkat dan daftar teman. */
 export const ACC_PROTOCOL_SOCIAL = 2;
+/** Versi protokol pertama yang punya koin, hadiah harian, toko, musim, gelar, dan bingkai. */
+export const ACC_PROTOCOL_ECONOMY = 3;
 
 export interface AccFail {
   ok: false;
@@ -388,6 +541,8 @@ export interface BoardRow {
   xp: number;
   wins: number;
   matches: number;
+  /** Gelar yang dipasang (id di TITLES); tidak ada bila tanpa gelar atau server versi lama. */
+  title?: string;
 }
 
 export interface AccBoard {
@@ -398,6 +553,32 @@ export interface AccBoard {
   me: BoardRow | null;
   /** Jumlah seluruh akun. */
   total: number;
+  /** Id musim yang sedang berjalan ("YYYY-MM"); server versi lama: tidak ada. */
+  season?: string;
+}
+
+/** Akun sesudah sebuah perubahan (pasang gelar/bingkai, ringkasan musim dilihat, atau kabar acc:update). */
+export interface AccUpdated {
+  ok: true;
+  account: Account;
+}
+
+/** Jawaban acc:daily. */
+export interface AccDaily extends AccUpdated {
+  /** Koin yang didapat dari klaim ini (0 bila hari ini sudah diklaim). */
+  coins: number;
+  /** Streak sesudah klaim. */
+  streak: number;
+  /** true bila hadiah hari ini sudah diklaim sebelumnya (tidak ada yang berubah). */
+  already?: true;
+}
+
+/** Jawaban acc:buy. */
+export interface AccBought extends AccUpdated {
+  /** Id barang yang diminta. */
+  item: string;
+  /** true bila barang itu sudah dimiliki (tidak ada koin yang dipotong). */
+  already?: true;
 }
 
 /** Jumlah baris teratas di papan peringkat. */
@@ -411,6 +592,9 @@ export interface AccMatch {
   unlocked: string[];
   /** Perubahan poin peringkat yang diterapkan (bisa negatif); tidak ada bila hasilnya tidak dicatat. */
   rp?: number;
+  /** Koin dari pertandingan ini, dan dari misi harian yang tercapai; tidak ada di server versi lama. */
+  coins?: number;
+  coinsBonus?: number;
   /**
    * Terisi bila hasilnya tidak dicatat. 'short': pemain baru bergabung menjelang akhir pertandingan;
    * 'afk': pemain nyaris tidak memberi perintah apa pun sepanjang pertandingan; 'left': akun ini

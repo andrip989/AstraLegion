@@ -201,12 +201,17 @@ function settleMatch(code: string, room: Room): void {
       const h = p.hero;
       result = accountDb.recordMatch(
         s.account,
-        { hero: h.def.id, win: h.team === game.winner, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online' },
+        { hero: h.def.id, win: h.team === game.winner, k: h.kills, d: h.deaths, a: h.assists, dur: seconds, mode: 'online', titans: h.titans },
         { botLevel: game.botLevel, humanEnemy: humans[h.team === 0 ? 1 : 0], quick: game.mode === 'kilat' },
       );
       if (result) recorded++;
     }
-    if (result) io.sockets.sockets.get(s.socketId)?.emit('acc:match', result);
+    if (result) {
+      const playing = io.sockets.sockets.get(s.socketId);
+      playing?.emit('acc:match', result);
+      // sambungan lain milik akun itu (lobby di tab atau perangkat lain) ikut melihat koin dan statistik terbarunya
+      if (!result.skipped || result.skipped === 'afk') social.emit(s.account, 'acc:update', { ok: true, account: result.account }, playing);
+    }
   }
   if (credited.size) console.log(`[akun] hasil pertandingan room ${code || '(umum)'} dicatat untuk ${recorded} akun${credited.size > recorded ? ` (${credited.size - recorded} dilewati: baru bergabung, tidak ikut bermain, atau sudah keluar)` : ''}`);
 }
@@ -289,6 +294,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(s.room);
     if (room) forfeit(room, s);
     s.account = null;
+    room?.game.setEmotes(socket.id, undefined); // paket emote milik akun itu ikut dilepas
     social.touch(account);
   });
 
@@ -350,9 +356,14 @@ io.on('connection', (socket) => {
     // pemain yang masuk akun selalu tampil dengan nama akunnya
     const mode = typeof req?.mode === 'string' ? req.mode : undefined;
     const talent = typeof req?.talent === 'string' ? req.talent : undefined;
-    const result = room.game.addPlayer(socket.id, seat.name() ?? String(req?.name ?? ''), String(req?.heroId ?? ''), team, spell, req?.skin, req?.bots, mode, talent);
+    const size = typeof req?.size === 'number' ? req.size : undefined;
+    // skin diperiksa server: akun hanya memakai skin yang ia punya (level cukup, atau sudah dibeli); selain itu skin asli
+    const skin = accountDb.joinSkin(account, req?.skin);
+    const result = room.game.addPlayer(socket.id, seat.name() ?? String(req?.name ?? ''), String(req?.heroId ?? ''), team, spell, skin, req?.bots, mode, talent, size);
     if (result.ok) {
       room.game.setCaps(socket.id, req?.caps);
+      // jumlah emote ditetapkan dari akun (paket emote dari toko), bukan dari permintaan client
+      room.game.setEmotes(socket.id, accountDb.emotes(account));
       resumable = !!want && !sessions.has(want);
       token = resumable ? want : `anon-${++anonymous}-${socket.id}`;
       sessions.set(token, { room: code, socketId: socket.id, timer: null, account, matchNo: room.matchNo, joinedAt: room.game.time });

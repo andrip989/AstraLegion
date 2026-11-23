@@ -4,6 +4,7 @@ import { dayPhase, type Snapshot } from '../../../shared/src';
 import { FogOfWar } from '../render/fog';
 import type { Game } from '../../../server/src/game/Game';
 import { Training, trainingWanted } from '../ui/Training';
+import { Tutorial, tutorialWanted } from '../ui/Tutorial';
 import { accountLevel, accounts } from '../account/accounts';
 import { GameSounds } from '../audio/gameSounds';
 import { sound } from '../audio/Sound';
@@ -23,6 +24,7 @@ export class GameClient {
   /** Kabut perang: lapisan gelap di luar jarak pandang tim sendiri. */
   private fog: FogOfWar;
   private night = false;
+  private tutorial: Tutorial | null = null;
   /** Pertandingan ini mode latihan bebas (offline): hasilnya tidak dicatat ke akun mana pun. */
   private training = false;
   private sight: number[] = [];
@@ -71,7 +73,7 @@ export class GameClient {
       recall: () => transport.send({ t: 'recall' }),
       openSettings: showSettings,
       chat: (s, all) => transport.send({ t: 'chat', s, all }),
-      ping: (kind) => transport.send({ t: 'ping', kind }),
+      ping: (kind, at) => transport.send(at ? { t: 'ping', kind, x: at.x, z: at.z } : { t: 'ping', kind }),
       emote: (kind) => transport.send({ t: 'emote', kind }),
       surrender: (vote) => transport.send({ t: 'surrender', vote }),
       useItem: (slot) => transport.send({ t: 'use', slot }),
@@ -97,11 +99,19 @@ export class GameClient {
       this.controls.setFollow(false),
     );
     this.minimap.fog = this.fog;
+    // ping di titik: klik kanan / tekan lama minimap, atau Alt+klik di arena
+    this.minimap.onPingAt = (x, z) => this.hud.pingAt(x, z);
+    this.controls.onPingAt = (x, z) => this.hud.pingAt(x, z);
     // mode latihan bebas: hanya untuk pertandingan offline (simulasinya ada di browser ini)
     const local = (transport as unknown as { game?: Game | null }).game;
     if (transport.mode === 'offline' && local && trainingWanted()) {
       this.training = true;
       new Training(local, 'local', (text) => this.hud.feed(text));
+    } else if (transport.mode === 'offline' && local && tutorialWanted()) {
+      // tutorial: kartu petunjuk langkah demi langkah; hasilnya tidak dicatat, tips biasa tidak ditampilkan
+      this.training = true;
+      this.tutorial = new Tutorial(local, 'local', () => (this.views.self ? { x: this.views.self.x, z: this.views.self.z } : null));
+      document.getElementById('tip-close')?.click();
     }
 
     const followBtn = document.getElementById('follow-btn')!;
@@ -143,6 +153,7 @@ export class GameClient {
     this.minimap.handle(s.events);
     this.controls.heroDef = s.you.def;
     this.hud.update(s, this.views.self);
+    this.tutorial?.update(s);
     // hero baru (awal match / match di-reset) atau baru bangkit: pusatkan kamera
     const respawned = s.you.alive && !this.wasAlive;
     this.wasAlive = s.you.alive;
@@ -184,11 +195,11 @@ export class GameClient {
     this.hud.setMatchSummary(head(rec));
     if (this.training) {
       // mode latihan bebas: level dan emas bisa diatur sesuka hati, jadi hasilnya tidak dicatat ke akun mana pun
-      this.hud.setMatchSummary(head(rec) + '<small class="go-note">Mode latihan: hasil pertandingan ini tidak dicatat.</small>');
+      this.hud.setMatchSummary(head(rec) + `<small class="go-note">${this.tutorial ? 'Tutorial' : 'Mode latihan'}: hasil pertandingan ini tidak dicatat.</small>`);
       return;
     }
     const before = accounts.current();
-    const { account, xp, missions, unlocked, skipped, rank, rankNote } = await accounts.recordMatch(rec);
+    const { account, xp, missions, unlocked, skipped, rank, rankNote, coins, coinsBonus } = await accounts.recordMatch(rec);
     if (this.lastOver === null) return; // pertandingan berikutnya sudah dimulai selagi menunggu
     // yang tercatat di akun (untuk akun online: angka server) adalah yang ditampilkan
     let html = head((!skipped && account?.profile.history[0]) || rec);
@@ -219,12 +230,22 @@ export class GameClient {
         // akun tanpa tier (akun di perangkat, server versi lama): katakan itu, bukan tier tiruan
         html += `<small class="go-rank-none">${rankNote}</small>`;
       }
+      // Koin (angka server; hanya pertandingan online dengan akun online). Lambangnya digambar CSS (.coin di account.css).
+      if (coins !== undefined) {
+        html += `<div class="go-row coin-gain"><span>Koin</span><b><i class="coin"></i>+${coins} koin</b></div>`;
+        if (coinsBonus) html += `<div class="go-row coin-gain"><span>Koin misi harian</span><b><i class="coin"></i>+${coinsBonus} koin</b></div>`;
+      } else if (rank) {
+        // server yang punya tier tetapi belum punya koin (versi lama): katakan itu, bukan angka tiruan
+        html += `<small class="go-rank-none">Server ini belum mendukung koin.</small>`;
+      }
       // misi harian yang tercapai dan pencapaian yang baru terbuka
       for (const m of missions) html += `<div class="go-row bonus"><span>Misi: ${m.text}</span><b>+${m.xp} XP</b></div>`;
       for (const name of unlocked) html += `<div class="go-row bonus"><span>Pencapaian baru</span><b>${name}</b></div>`;
       if (up || tierUp || missions.length || unlocked.length) sound.play('levelup');
     } else {
-      html += `<small>Bermain sebagai tamu: masuk atau daftar akun supaya XP (+${xp}) dan statistik tersimpan.</small>`;
+      // koin hanya dari pertandingan online dengan akun online; tamu mendapat keterangannya, bukan angka
+      const coinNote = this.transport.mode === 'online' && accounts.online ? ' Koin dari pertandingan online juga hanya untuk akun online.' : '';
+      html += `<small>Bermain sebagai tamu: masuk atau daftar akun supaya XP (+${xp}) dan statistik tersimpan.${coinNote}</small>`;
     }
     this.hud.setMatchSummary(html);
   }

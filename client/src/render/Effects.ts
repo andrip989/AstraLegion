@@ -737,7 +737,8 @@ export class Effects {
           this.b.set(e.x1, 1.3, e.z1);
           if (e.warn) {
             // garis bidik sebelum tembakan besar
-            this.ribbon(this.a, this.b, e.w * 0.5, e.c, 0.8, 0.5, 0.45, 0.2);
+            // tanpa bloom (kualitas ringan / HP) garisnya nyaris tak terlihat, jadi dibuat lebih tebal dan pekat di sana
+            this.ribbon(this.a, this.b, e.w * (GFX.low || GFX.mobile ? 0.8 : 0.5), e.c, GFX.low || GFX.mobile ? 1.3 : 0.8, 0.5, GFX.low || GFX.mobile ? 0.8 : 0.45, 0.2);
           } else {
             const heavy = e.w > 2.5;
             this.light((e.x0 + e.x1) / 2, 2, (e.z0 + e.z1) / 2, e.c, heavy ? 60 : 32, 0.4);

@@ -93,6 +93,9 @@ export class Controls {
    * Tombol antarmuka: toko (P), beli rekomendasi (G), papan skor (Tab, ditahan), menu (Esc),
    * obrolan tim (Enter), obrolan semua pemain (Shift+Enter), dan pesan cepat (V).
    */
+  /** Alt+klik di arena: pemain ingin menandai titik (x, z); diisi GameClient. */
+  onPingAt: ((x: number, z: number) => void) | null = null;
+
   onUi: ((what: 'shop' | 'quickbuy' | 'board' | 'menu' | 'chat' | 'chatall' | 'ping', down: boolean) => void) | null = null;
 
   setFollow(on: boolean): void {
@@ -228,6 +231,13 @@ export class Controls {
       button: e.button,
     });
     if (e.pointerType === 'mouse') {
+      // Alt+klik di arena: tandai titik itu untuk tim
+      if (e.altKey && (e.button === 0 || e.button === 2)) {
+        const at = this.sm.groundPoint(e.clientX, e.clientY);
+        if (at) this.onPingAt?.(at.x, at.z);
+        this.ptrs.delete(e.pointerId);
+        return;
+      }
       if (e.button === 2) {
         this.rmbHeld = true;
         this.command(e.clientX, e.clientY, true);

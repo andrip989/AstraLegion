@@ -418,8 +418,8 @@
   border-radius: 999px;
   box-shadow: 0 0 0 2px #0b1020;
 }
-/* empat tombol tidak muat berlabel di samping judul: di bawah lebar ini tinggal ikonnya */
-@media (max-width: 1720px) {
+/* lima tombol (dengan saldo koin) tidak muat berlabel di samping judul: di bawah lebar ini tinggal ikonnya */
+@media (max-width: 2080px) {
   #rank-btn span,
   #friends-btn span,
   #settings-btn span {
@@ -642,4 +642,700 @@
     top: max(6px, env(safe-area-inset-top));
     padding: 6px 12px;
   }
+}
+
+/* =====================================================================
+   Koin, hadiah harian, toko, gelar, bingkai, musim, penguasaan hero.
+   Semua lambang digambar CSS; tidak ada file gambar.
+   ===================================================================== */
+
+/* ---------- lambang koin dan jumlah koin ---------- */
+.coin {
+  display: inline-block;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  background: radial-gradient(circle at 36% 30%, #fff8cf 0 16%, #ffd94f 40%, #f0a51c 76%, #a9670c 100%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(122, 72, 0, 0.6),
+    0 0 0 1px rgba(255, 226, 120, 0.3);
+}
+.coins {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #ffe58a;
+}
+
+/* ---------- bilah akun: tombol Toko dengan saldo koin, dan bingkai di sekeliling level ---------- */
+#store-btn .store-ico {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: #cfd9f5;
+}
+/* keranjang belanja: rangkanya garis, rodanya terisi */
+#store-btn .store-ico .frame {
+  fill: none;
+  stroke: #cfd9f5;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#acc-coins {
+  font-size: 13px;
+}
+@media (max-width: 2080px) {
+  #store-btn > span {
+    display: none;
+  }
+}
+#account-bar .lv.framed {
+  box-shadow:
+    0 0 0 2px #0b1020,
+    0 0 0 4px var(--tc),
+    0 0 10px 1px color-mix(in srgb, var(--tc) 55%, transparent);
+}
+/* Bilah akun tidak boleh menimpa judul, yang di layar biasa berada di tengah (lebar judul berikut
+   logonya 632px): lebar bilah dibatasi sampai tepi judul, dan tombol yang tidak muat sebaris
+   turun ke baris kedua. Di kanan judul memang kosong sampai kartu hero. */
+@media (min-height: 431px) and (min-width: 641px) {
+  #account-bar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: max(190px, calc(50vw - 324px));
+  }
+  #profile-btn {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+/* HP tegak: bilah tetap sebaris di atas judul, dirapatkan, dengan nama akun dipotong */
+@media (min-height: 431px) and (max-width: 640px) {
+  #account-bar {
+    gap: 3px;
+  }
+  #account-bar button {
+    padding: 6px 7px;
+  }
+  #acc-name {
+    max-width: clamp(30px, calc(100vw - 326px), 160px);
+  }
+}
+/* HP mendatar: judul rata kiri dan tinggi layar terbatas, jadi bilah tetap sebaris: jaraknya
+   dirapatkan dan nama akun dipotong sesuai lebar yang tersisa di kanan judul. */
+@media (max-height: 430px) {
+  #account-bar {
+    gap: 6px;
+  }
+  #account-bar button {
+    padding: 6px 10px;
+  }
+  #acc-name {
+    max-width: clamp(40px, calc(100vw - 706px), 160px);
+  }
+}
+@media (max-height: 430px) and (max-width: 720px) {
+  #account-bar {
+    gap: 4px;
+  }
+  #account-bar button {
+    padding: 6px 8px;
+  }
+  #acc-name {
+    max-width: clamp(34px, calc(100vw - 604px), 160px);
+  }
+}
+
+/* ---------- lobby: misi harian dan hadiah masuk harian berdampingan ---------- */
+#lobby-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 8px;
+  margin: 0 auto 10px;
+}
+#lobby-strip #daily-line {
+  margin: 0;
+}
+#bonus-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  color: #ffe9b0;
+  background: rgba(255, 210, 63, 0.1);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 999px;
+}
+#bonus-btn .coins {
+  margin-left: 1px;
+}
+/* belum diklaim: tombol emas yang jelas bisa ditekan */
+#bonus-btn.ready {
+  font-weight: 700;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe37a, var(--gold) 55%, #f0a91f);
+  border-color: var(--gold);
+  animation: bonus-glow 1.8s ease-in-out infinite;
+}
+#bonus-btn.ready .coins {
+  color: #201400;
+}
+#bonus-btn .tag {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffe58a;
+  background: #201400;
+  border-radius: 999px;
+}
+#bonus-btn.done {
+  color: #b8f5c8;
+  background: rgba(123, 228, 149, 0.08);
+  border-color: rgba(123, 228, 149, 0.4);
+}
+#bonus-btn .tick {
+  color: #7be495;
+}
+/* bukan akun online (atau sedang offline): hanya keterangan */
+#bonus-btn.off {
+  color: var(--dim);
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+#bonus-btn:disabled {
+  opacity: 0.6;
+}
+@keyframes bonus-glow {
+  50% {
+    box-shadow: 0 0 16px -2px rgba(255, 210, 63, 0.75);
+  }
+}
+@media (pointer: coarse) {
+  /* sasaran sentuh: tombol klaim sedikit lebih tinggi daripada pil keterangan */
+  #bonus-btn.ready {
+    min-height: 30px;
+  }
+}
+@media (max-height: 430px) {
+  #lobby-strip {
+    margin-bottom: 6px;
+  }
+  #bonus-btn {
+    padding: 3px 12px;
+    font-size: 11.5px;
+  }
+}
+
+/* ---------- penguasaan hero: lencana belah ketupat berangka tingkat ---------- */
+.m1 {
+  --mc: #a9b8dc;
+}
+.m2 {
+  --mc: #7be495;
+}
+.m3 {
+  --mc: #5ab4ff;
+}
+.m4 {
+  --mc: #c58bff;
+}
+.m5 {
+  --mc: #ffd23f;
+}
+.mastery {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--mc);
+  background: rgba(8, 12, 28, 0.78);
+  border: 1px solid color-mix(in srgb, var(--mc) 55%, transparent);
+  border-radius: 999px;
+}
+.mastery i {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  color: #0b1020;
+  background: var(--mc);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+/* di kartu hero: pojok kiri atas potret */
+.hero-card .portrait .hero-mastery {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 1;
+}
+.hero-mastery:empty {
+  display: none;
+}
+.hero-list .mastery {
+  margin-left: 8px;
+}
+@media (max-height: 430px) {
+  .hero-card .portrait .hero-mastery {
+    top: 4px;
+    left: 6px;
+  }
+  .hero-card .mastery {
+    padding: 1px 7px 1px 2px;
+    font-size: 10.5px;
+  }
+  .hero-card .mastery i {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+/* ---------- chip skin premium: yang belum dimiliki menyebut harganya ---------- */
+.skins small {
+  display: inline-flex;
+  align-items: center;
+}
+.skins small:empty {
+  display: none;
+}
+/* lambang koin di dalam chip: aturan bulatan warna skin (.skins span i) tidak boleh ikut mengenainya */
+.skins small .coin {
+  width: 9px;
+  height: 9px;
+  margin-right: 2px;
+  vertical-align: 0;
+  background: radial-gradient(circle at 36% 30%, #fff8cf 0 16%, #ffd94f 40%, #f0a51c 76%, #a9670c 100%);
+  filter: none;
+}
+/* sedikit lebih rapat daripada chip biasa, supaya dua chip berharga muat sebaris di kartu yang sempit */
+.skins span.premium.locked {
+  gap: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  font-size: 10.5px;
+  opacity: 0.85;
+  border-style: dashed;
+  border-color: rgba(255, 210, 63, 0.5);
+}
+.skins span.premium.locked i {
+  width: 9px;
+  height: 9px;
+}
+.skins span.premium.locked small {
+  color: #ffe58a;
+}
+
+/* ---------- gelar ---------- */
+.title-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: #ffe9b0;
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.42);
+  border-radius: 5px;
+}
+.title-line {
+  margin: -2px 0 5px;
+}
+/* papan peringkat: gelar di baris kedua, di bawah nama */
+.rank-table .nm .title-tag {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+.rank-table tr.me .nm .title-tag {
+  font-weight: 700;
+}
+.rank-season {
+  margin: 12px 0 -6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.season-now {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---------- bingkai: cincin warna tier di sekeliling lencana level ---------- */
+.lv-badge.framed {
+  box-shadow:
+    0 0 0 3px #131c3a,
+    0 0 0 6px var(--tc),
+    0 0 18px 3px color-mix(in srgb, var(--tc) 55%, transparent);
+}
+.profile-head .lv-badge.framed {
+  margin: 6px;
+}
+.frame-dot {
+  display: inline-block;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  vertical-align: -3px;
+  background: #1a2446;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.frame-dot.framed {
+  background: #131c3a;
+  border: 3px solid var(--tc);
+  box-shadow: 0 0 6px 0 color-mix(in srgb, var(--tc) 60%, transparent);
+}
+
+/* ---------- profil: dompet, daftar gelar, pilihan bingkai, riwayat musim ---------- */
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 210, 63, 0.07);
+  border: 1px solid rgba(255, 210, 63, 0.3);
+  border-radius: 10px;
+}
+.wallet .coins {
+  font-size: 17px;
+}
+.wallet .coins::after {
+  content: 'koin';
+  margin-left: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d9c27a;
+}
+.wallet .coin {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+}
+.wallet small {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--dim);
+}
+.wallet.big .coins {
+  font-size: 21px;
+}
+#pf-msg:empty {
+  display: none;
+}
+.plain-list.title-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1px 10px;
+  align-items: center;
+}
+.title-list li b,
+.title-list li > span:not(.need) {
+  grid-column: 1;
+}
+.title-list li > span:not(.need) {
+  font-size: 11.5px;
+}
+.title-list li button,
+.title-list li .need {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.title-list li.locked b {
+  color: #b9c3de;
+}
+.title-list li.on b {
+  color: var(--gold);
+}
+.title-list .need {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.title-list button {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+}
+.title-list button.on {
+  color: var(--gold);
+  background: transparent;
+}
+.title-list button:disabled,
+.frame-pick button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.frame-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.frame-pick button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px 0 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: #0e1630;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.frame-pick button.on {
+  color: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 10px -3px var(--gold);
+}
+.plain-list.season-list li,
+.plain-list.season-gain li {
+  align-items: center;
+}
+.season-list li b {
+  flex: 1;
+}
+.season-list .tier,
+.season-gain .tier {
+  font-size: 12px;
+}
+.season-list li > span:nth-child(3) {
+  min-width: 62px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.season-list li > span:nth-child(4) {
+  min-width: 56px;
+  text-align: right;
+}
+.season-list .coins,
+.season-gain .coins {
+  color: #ffe58a;
+}
+
+/* ---------- jendela Toko ---------- */
+.store-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.store-card {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 4px 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.store-card.owned {
+  border-color: rgba(123, 228, 149, 0.42);
+}
+.store-art {
+  position: relative;
+  grid-row: 1 / span 2;
+  height: 100px;
+  overflow: hidden;
+  /* deklarasi pertama = cadangan untuk browser lama tanpa color-mix() */
+  background: #0c1226;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 68%, color-mix(in srgb, var(--hc, #5ab4ff) 45%, transparent), transparent 76%),
+    #0c1226;
+  border-radius: 8px;
+}
+.store-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 100%;
+}
+/* cadangan bila potret tidak bisa digambar: bulatan berwarna skin itu */
+.store-swatch {
+  position: absolute;
+  inset: 24%;
+  background: var(--hc, #5ab4ff);
+  border-radius: 50%;
+  filter: hue-rotate(var(--hue)) brightness(var(--lum));
+}
+.store-art.emo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  place-items: center;
+  padding: 8px 2px;
+  font-size: 21px;
+}
+.store-info b {
+  display: block;
+  font-size: 14px;
+}
+.store-info small {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+.store-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: end;
+  gap: 5px 6px;
+  font-size: 12px;
+}
+.store-act button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  background: #0e1630;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.store-act button.go {
+  color: #111;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.store-act button.poor {
+  color: var(--dim);
+}
+.store-act button.poor .coin {
+  filter: grayscale(0.7);
+}
+.store-act button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.store-act .own {
+  font-weight: 700;
+  color: #7be495;
+}
+.store-act .own::before {
+  content: '\2714\00a0';
+}
+.store-act small {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.store-act .short {
+  color: #ff9a9a;
+}
+.store-act .using {
+  color: var(--gold);
+}
+#store-msg:empty {
+  display: none;
+}
+@media (pointer: coarse) {
+  .store-act button,
+  .title-list button,
+  .frame-pick button {
+    min-height: 36px;
+  }
+}
+
+/* ---------- ringkasan "Musim baru" ---------- */
+.season-head {
+  margin: 14px 0 2px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+  color: var(--gold);
+}
+#season-news > .hint {
+  text-align: center;
+}
+#season-news .plain-list {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.season-ok {
+  margin-top: 12px;
+  text-align: center;
+}
+.season-ok button {
+  min-height: 36px;
+  padding: 0 30px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #111;
+  background: linear-gradient(180deg, #ffe37a, var(--gold) 55%, #f0a91f);
+  border: 0;
+  border-radius: 8px;
+}
+
+/* ---------- akhir pertandingan: koin ---------- */
+.go-row.coin-gain b {
+  display: inline-flex;
+  align-items: center;
+  color: #ffe58a;
+}
+
+/* ---------- HP tegak: bilah akun di atas, logo dan judul mulai di bawahnya ---------- */
+#account-bar {
+  z-index: 2;
+}
+@media (min-height: 431px) and (max-width: 640px) {
+  .lobby-box {
+    padding-top: 42px;
+  }
+}
+
+/* tanpa saldo koin (tamu, akun di perangkat) tombol Toko lebih sempit: teks tombol profil boleh lebih lebar */
+@media (max-height: 430px) {
+  #account-bar.no-coins #acc-name {
+    max-width: clamp(40px, calc(100vw - 640px), 160px);
+  }
+}
+@media (max-height: 430px) and (max-width: 720px) {
+  #account-bar.no-coins #acc-name {
+    max-width: clamp(34px, calc(100vw - 540px), 160px);
+  }
+}
+@media (min-height: 431px) and (max-width: 640px) {
+  #account-bar.no-coins #acc-name {
+    max-width: clamp(30px, calc(100vw - 262px), 160px);
+  }
+}
+
+/* daftar teman: dengan gelar, nama dan keterangannya melipat di dalam kolomnya sendiri supaya tombol tetap di kanan */
+.fr-who {
+  flex: 1 1 170px;
 }
