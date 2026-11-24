@@ -600,7 +600,7 @@ export interface AccMatch {
    * 'afk': pemain nyaris tidak memberi perintah apa pun sepanjang pertandingan; 'left': akun ini
    * sudah keluar dari pertandingan yang sama sebelumnya dan saat itu sudah dicatat kalah.
    */
-  skipped?: 'short' | 'afk' | 'left';
+  skipped?: 'short' | 'afk' | 'left' | 'admin';
 }
 
 /** Minimal sekian detik ikut bermain supaya hasil pertandingan online dicatat ke akun. */

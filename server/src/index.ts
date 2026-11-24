@@ -181,7 +181,10 @@ function settleMatch(code: string, room: Room): void {
     credited.add(s.account);
     const seconds = Math.round((room.played.get(s.account) ?? 0) + secondsPlayed(room, s));
     let result: AccMatch | null;
-    if (room.left.has(s.account)) {
+    if (game.adminUsed) {
+      // menu admin dipakai di pertandingan ini: tidak ada yang dicatat
+      result = { account, xp: 0, missions: [], unlocked: [], skipped: 'admin' };
+    } else if (room.left.has(s.account)) {
       // sempat keluar dari pertandingan ini lalu masuk lagi: sudah dicatat kalah saat keluar, tidak dicatat dua kali
       result = { account, xp: 0, missions: [], unlocked: [], skipped: 'left' };
     } else if (seconds < MIN_RECORDED_SECONDS) {
@@ -227,7 +230,7 @@ function settleMatch(code: string, room: Room): void {
  */
 function forfeit(room: Room, s: Session): boolean {
   const key = s.account;
-  if (!key || room.settled || room.game.winner !== null || room.left.has(key)) return false;
+  if (!key || room.settled || room.game.winner !== null || room.left.has(key) || room.game.adminUsed) return false;
   const p = room.game.players.get(s.socketId);
   if (!p) return false;
   const seconds = Math.round((room.played.get(key) ?? 0) + secondsPlayed(room, s));

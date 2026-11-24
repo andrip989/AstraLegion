@@ -77,6 +77,11 @@ export interface SelfState {
    * perang; server lama tidak mengirimnya dan client tidak menggelapkan apa pun.
    */
   ward?: number;
+  /**
+   * Menu admin tersedia (pemain manusia di room hanya satu): bit 1 = boleh dipakai, 2 = HP tak terbatas
+   * aktif, 4 = sekali pukul aktif. Tidak dikirim bila tidak tersedia.
+   */
+  admin?: number;
   /** Hero sedang dikendalikan bot karena pemainnya diam terlalu lama (hilang begitu ia memberi perintah). */
   afk?: 1;
   /** Sisa detik Berkah Golem, Berkah Arus, dan Berkah Titan (tidak dikirim bila tidak aktif). */
@@ -169,6 +174,8 @@ export type ClientCommand =
   | { t: 'ward'; x: number; z: number }
   // pakai kemampuan aktif item di slot `slot`
   | { t: 'use'; slot: number }
+  // menu admin (hanya bila pemain manusia di room cuma satu): 'gold' = emas maksimal, 'god' = HP tak terbatas, 'onehit' = sekali pukul tumbang
+  | { t: 'admin'; a: 'gold' | 'god' | 'onehit'; on?: boolean }
   // menyerah: mengajukan pemungutan suara tim, atau memberi suara (vote: false = menolak)
   | { t: 'surrender'; vote?: boolean }
   // emote di atas kepala hero sendiri; `kind` = indeks di EMOTES

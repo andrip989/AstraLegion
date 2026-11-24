@@ -145,6 +145,8 @@ export class Game {
   teamSize = TEAM_SIZE;
   /** Emas yang dikumpulkan tiap tim, dicatat tiap CHART_EVERY detik (untuk grafik di layar akhir). */
   private goldLine: [number[], number[]] = [[], []];
+  /** Menu admin sudah dipakai di pertandingan ini: hasilnya tidak dicatat ke akun mana pun. */
+  adminUsed = false;
   /** Mode latihan (hanya pertandingan offline di browser): bot pengganti pemain diam dimatikan, dan alat train* dipakai. */
   training = false;
   /** Bot yang sedang "diam" karena dimatikan lewat alat latihan. */
@@ -200,6 +202,7 @@ export class Game {
     this.openLanes.clear();
     this.alertAt.clear();
     this.sightTick = -1;
+    this.adminUsed = false;
     this.goldLine = [[], []];
     this.parkedBots = null;
     this.vote = null;
@@ -358,6 +361,15 @@ export class Game {
       this.botLevel = bots | 0;
       if (this.botLevel !== 1) this.emit({ k: 'msg', s: `Tingkat bot: ${BOT_LEVELS[this.botLevel].name}` });
     }
+    if (this.players.size >= 1) {
+      // room tidak lagi berisi satu pemain: semua efek admin dimatikan
+      let had = false;
+      for (const q of this.players.values()) {
+        had ||= q.hero.godMode || q.hero.oneHit;
+        q.hero.godMode = q.hero.oneHit = false;
+      }
+      if (had) this.emit({ k: 'msg', s: 'Pemain lain bergabung: efek menu admin dimatikan.' });
+    }
     this.players.set(id, { id, name, hero, known: new Set(), lastInput: this.time });
     this.fillBots();
     if (this.mode === 'kilat' && this.players.size === 1) this.emit({ k: 'msg', s: 'Mode Kilat: hanya lane tengah, semuanya dipercepat.' });
@@ -433,6 +445,25 @@ export class Game {
 
   private say(p: PlayerSession, s: string): void {
     this.emit({ k: 'text', x: r2(p.hero.x), z: r2(p.hero.z), s, c: 0xffd27a, to: p.hero.id });
+  }
+
+  /**
+   * Menu admin. Hanya bila pemain manusia di room ini cuma satu (sisanya bot); begitu dipakai,
+   * pertandingan ini tidak dicatat ke akun (adminUsed).
+   */
+  private admin(p: PlayerSession, what: unknown, on: boolean): void {
+    if (this.players.size !== 1) return this.say(p, 'Menu admin hanya bila kamu satu-satunya pemain di room.');
+    const h = p.hero;
+    if (what === 'gold') h.gold = 99999;
+    else if (what === 'god') {
+      h.godMode = on;
+      if (on && h.alive) h.hp = h.maxHp;
+    } else if (what === 'onehit') h.oneHit = on;
+    else return;
+    if (!this.adminUsed) {
+      this.adminUsed = true;
+      this.emit({ k: 'msg', s: 'Menu admin dipakai: hasil pertandingan ini tidak dicatat ke akun.' });
+    }
   }
 
   /** Ajukan pemungutan suara menyerah untuk tim sendiri, atau beri suara pada yang sedang berjalan. */
@@ -522,6 +553,10 @@ export class Game {
     if (this.winner !== null) return;
     if (cmd.t === 'surrender') {
       this.surrender(p, cmd.vote !== false);
+      return;
+    }
+    if (cmd.t === 'admin') {
+      this.admin(p, cmd.a, cmd.on === true);
       return;
     }
     this.touch(p);
@@ -1581,6 +1616,7 @@ export class Game {
       if (this.winner !== null && this.goldLine[0].length > 1) snap.chart = { every: CHART_EVERY, gold: this.goldLine };
     }
     snap.you.ward = Math.ceil(me.wardCd);
+    if (this.players.size === 1) snap.you.admin = 1 | (me.godMode ? 2 : 0) | (me.oneHit ? 4 : 0);
     snap.you.talent = me.talent;
     snap.you.emotes = p.emotes ?? FREE_EMOTES;
     if (p.afk) snap.you.afk = 1;

@@ -26,6 +26,7 @@ export class GameClient {
   private fog: FogOfWar;
   private night = false;
   private tutorial: Tutorial | null = null;
+  private admin: AdminPanel;
   /** Pertandingan ini mode latihan bebas (offline): hasilnya tidak dicatat ke akun mana pun. */
   private training = false;
   private sight: number[] = [];
@@ -115,8 +116,8 @@ export class GameClient {
       this.tutorial = new Tutorial(local, 'local', () => (this.views.self ? { x: this.views.self.x, z: this.views.self.z } : null));
       document.getElementById('tip-close')?.click();
     }
-    // menu admin: semua pertandingan offline lawan bot (tidak ada di pertandingan online)
-    if (transport.mode === 'offline' && local) new AdminPanel(local, 'local', (text) => this.hud.feed(text));
+    // menu admin: tampil selama kamu satu-satunya pemain di room (server yang memutuskan dan menerapkannya)
+    this.admin = new AdminPanel((cmd) => transport.send(cmd));
 
     const followBtn = document.getElementById('follow-btn')!;
     const syncFollow = (on: boolean) => followBtn.classList.toggle('on', on);
@@ -158,6 +159,7 @@ export class GameClient {
     this.controls.heroDef = s.you.def;
     this.hud.update(s, this.views.self);
     this.tutorial?.update(s);
+    this.admin.update(s);
     // hero baru (awal match / match di-reset) atau baru bangkit: pusatkan kamera
     const respawned = s.you.alive && !this.wasAlive;
     this.wasAlive = s.you.alive;

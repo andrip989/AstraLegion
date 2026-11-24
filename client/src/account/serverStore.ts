@@ -75,6 +75,7 @@ const SKIPPED_TEXT: Record<NonNullable<AccMatch['skipped']>, string> = {
   afk: 'Kamu hampir tidak ikut bermain di pertandingan ini: tidak ada XP, dan untuk poin peringkat dihitung kalah.',
   short: 'Kamu bergabung kurang dari 2 menit sebelum pertandingan selesai, jadi hasilnya tidak dicatat ke akun.',
   left: 'Kamu sempat keluar dari pertandingan ini, dan saat itu sudah dicatat sebagai kalah. Hasil akhirnya tidak dicatat lagi.',
+  admin: 'Menu admin dipakai di pertandingan ini, jadi hasilnya tidak dicatat ke akun.',
 };
 
 function loadSaved(): Saved | null {
@@ -346,7 +347,7 @@ export class ServerAccountStore implements AccountStore {
     // koin: bilangan bulat kecil tak negatif; server versi lama tidak mengirimnya
     if (typeof m.coins === 'number') clean.coins = Math.min(int(m.coins), 9999);
     if (typeof m.coinsBonus === 'number') clean.coinsBonus = Math.min(int(m.coinsBonus), 9999);
-    if (m.skipped === 'short' || m.skipped === 'afk' || m.skipped === 'left') clean.skipped = m.skipped;
+    if (m.skipped === 'short' || m.skipped === 'afk' || m.skipped === 'left' || m.skipped === 'admin') clean.skipped = m.skipped;
     if (this.waiter) {
       const waiter = this.waiter;
       this.waiter = null;
