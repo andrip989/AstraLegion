@@ -59,51 +59,103 @@
         <button id="settings-btn" title="Pengaturan">&#9881;<span>Pengaturan</span></button>
       </div>
       <div class="lobby-box">
-        <div class="lobby-head">
-          <img class="logo" src="./logo.svg" alt="" />
-          <h1>ASTRA <span>LEGION</span></h1>
-          <p class="tagline">Arena 3 jalur &middot; 3 lawan 3 &middot; hancurkan Core musuh</p>
-        </div>
-        <!-- misi harian, dan hadiah masuk harian akun online (streak, hadiah hari ini, klaim) -->
-        <div id="lobby-strip">
-          <button id="daily-line" class="hidden" type="button" title="Lihat misi harian dan pencapaian"></button>
-          <button id="bonus-btn" type="button"></button>
-        </div>
-        <div id="hero-cards"></div>
-        <div class="lobby-row">
-          <input id="name-input" maxlength="16" placeholder="Nama pemain" autocomplete="off" />
-          <button id="play-btn" disabled>MAIN</button>
-        </div>
-        <div class="lobby-row lobby-opts">
-          <div class="seg" id="team-pick" title="Tim yang kamu inginkan">
-            <button type="button" data-team="">Tim otomatis</button>
-            <button type="button" data-team="0">Biru</button>
-            <button type="button" data-team="1">Merah</button>
+        <!-- ===== layar 1: menu utama ===== -->
+        <section id="view-home" class="lobby-view">
+          <div class="lobby-head">
+            <img class="logo" src="./logo.svg" alt="" />
+            <h1>ASTRA <span>LEGION</span></h1>
+            <p class="tagline">Arena 3 jalur &middot; 3 lawan 3 &middot; hancurkan Core musuh</p>
           </div>
-          <input id="room-input" maxlength="10" placeholder="Kode room (opsional)" autocomplete="off" autocapitalize="characters" />
-          <button id="invite-btn" type="button" title="Salin tautan undangan ke room ini">Undang teman</button>
-          <div class="seg" id="spell-pick" title="Mantra tempur: kemampuan tambahan di luar skill hero"></div>
-          <div class="seg" id="bot-pick" title="Tingkat kesulitan bot"></div>
-        </div>
-        <div class="lobby-row lobby-opts">
-          <div class="seg" id="mode-pick" title="Mode pertandingan"></div>
-          <div class="seg" id="size-pick" title="Jumlah hero per tim"></div>
-          <div class="seg" id="talent-pick" title="Talenta: satu bonus kecil yang berlaku sepanjang pertandingan"></div>
-          <button id="train-btn" type="button" title="Latihan bebas (offline): atur level dan emas, boneka sasaran, hentikan bot; hasilnya tidak dicatat">🛠 Latihan bebas</button>
-          <button id="tutorial-btn" type="button" title="Tutorial (offline): dipandu langkah demi langkah di satu pertandingan lawan bot Mudah">🎓 Tutorial</button>
-        </div>
-        <div id="room-hint"></div>
-        <div id="conn-status">Menghubungkan ke server…</div>
-        <details id="server-box">
-          <summary>Alamat server multiplayer (opsional)</summary>
-          <div class="lobby-row">
-            <input id="server-input" placeholder="mis. http://192.168.1.10:3000" autocomplete="off" />
-            <button id="server-btn">Sambungkan</button>
+          <!-- misi harian, dan hadiah masuk harian akun online (streak, hadiah hari ini, klaim) -->
+          <div id="lobby-strip">
+            <button id="daily-line" class="hidden" type="button" title="Lihat misi harian dan pencapaian"></button>
+            <button id="bonus-btn" type="button"></button>
           </div>
-        </details>
-        <a id="apk-link" class="hidden" href="#">Unduh APK Android</a>
-        <button id="update-btn" class="hidden"></button>
-        <div id="app-version"></div>
+          <div id="home-menu">
+            <button id="go-play" class="menu-main" type="button"><b>MAIN</b><small>Pilih hero, lalu bertanding online atau lawan bot</small></button>
+            <button id="go-practice" class="menu-tile" type="button"><i>🎓</i><b>Latihan &amp; Tutorial</b><small>Belajar main dan coba hero</small></button>
+            <button id="go-store" class="menu-tile" type="button"><i>🛒</i><b>Toko</b><small>Skin dan emote</small></button>
+            <button id="go-profile" class="menu-tile" type="button"><i>👤</i><b>Profil</b><small>Level, misi, gelar</small></button>
+            <button id="go-rank" class="menu-tile" type="button"><i>🏆</i><b>Peringkat</b><small>Papan peringkat musim</small></button>
+            <button id="go-friends" class="menu-tile" type="button"><i>👥</i><b>Teman</b><small>Ajak main bersama</small></button>
+            <button id="go-settings" class="menu-tile" type="button"><i>⚙</i><b>Pengaturan</b><small>Grafik dan suara</small></button>
+          </div>
+          <div id="conn-status">Menghubungkan ke server…</div>
+          <details id="server-box">
+            <summary>Alamat server multiplayer (opsional)</summary>
+            <div class="lobby-row">
+              <input id="server-input" placeholder="mis. http://192.168.1.10:3000" autocomplete="off" />
+              <button id="server-btn">Sambungkan</button>
+            </div>
+          </details>
+          <a id="apk-link" class="hidden" href="#">Unduh APK Android</a>
+          <button id="update-btn" class="hidden"></button>
+          <div id="app-version"></div>
+        </section>
+
+        <!-- ===== layar 2: pilih hero dan mulai ===== -->
+        <section id="view-play" class="lobby-view hidden">
+          <div class="view-head">
+            <button class="back-btn" type="button" data-back>&#8592; Menu</button>
+            <h2>Pilih Hero</h2>
+          </div>
+          <div id="hero-slot-play" class="hero-slot"><div id="hero-cards"></div></div>
+          <div id="hero-detail"></div>
+          <div class="play-groups">
+            <div class="play-group">
+              <h3>Pertandingan</h3>
+              <div class="seg" id="mode-pick" title="Mode pertandingan"></div>
+              <div class="seg" id="size-pick" title="Jumlah hero per tim"></div>
+              <div class="seg" id="bot-pick" title="Tingkat kesulitan bot"></div>
+            </div>
+            <div class="play-group">
+              <h3>Perlengkapan</h3>
+              <div class="seg" id="spell-pick" title="Mantra tempur: kemampuan tambahan di luar skill hero"></div>
+              <div class="seg" id="talent-pick" title="Talenta: satu bonus kecil yang berlaku sepanjang pertandingan"></div>
+            </div>
+            <div class="play-group">
+              <h3>Tim &amp; Room</h3>
+              <div class="seg" id="team-pick" title="Tim yang kamu inginkan">
+                <button type="button" data-team="">Tim otomatis</button>
+                <button type="button" data-team="0">Biru</button>
+                <button type="button" data-team="1">Merah</button>
+              </div>
+              <div class="lobby-row">
+                <input id="room-input" maxlength="10" placeholder="Kode room (opsional)" autocomplete="off" autocapitalize="characters" />
+                <button id="invite-btn" type="button" title="Salin tautan undangan ke room ini">Undang teman</button>
+              </div>
+            </div>
+          </div>
+          <div id="room-hint"></div>
+          <div class="start-bar">
+            <input id="name-input" maxlength="16" placeholder="Nama pemain" autocomplete="off" />
+            <button id="play-btn" disabled>MULAI</button>
+          </div>
+        </section>
+
+        <!-- ===== layar 3: latihan dan tutorial (offline) ===== -->
+        <section id="view-practice" class="lobby-view hidden">
+          <div class="view-head">
+            <button class="back-btn" type="button" data-back>&#8592; Menu</button>
+            <h2>Latihan &amp; Tutorial</h2>
+          </div>
+          <div class="practice-cards">
+            <div class="practice-card">
+              <i>🎓</i>
+              <h3>Tutorial</h3>
+              <p>Dipandu langkah demi langkah: bergerak, menyerang, skill, belanja, suar, dan menghancurkan tower. Satu pertandingan lawan bot Mudah.</p>
+              <button id="tutorial-btn" type="button" title="Tutorial (offline): dipandu langkah demi langkah di satu pertandingan lawan bot Mudah">Mulai Tutorial</button>
+            </div>
+            <div class="practice-card">
+              <i>🛠</i>
+              <h3>Latihan bebas</h3>
+              <p>Coba hero, skill, dan item sesukamu: atur level dan emas, boneka sasaran, hentikan bot. Hasilnya tidak dicatat.</p>
+              <button id="train-btn" type="button" title="Latihan bebas (offline): atur level dan emas, boneka sasaran, hentikan bot; hasilnya tidak dicatat">Mulai Latihan</button>
+            </div>
+          </div>
+          <h3 class="practice-pick">Hero untuk latihan</h3>
+          <div id="hero-slot-practice" class="hero-slot"></div>
+        </section>
       </div>
     </div>
 

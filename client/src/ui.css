@@ -2594,3 +2594,423 @@ img.logo {
 #ping-menu.at-spot .surrender {
   display: none;
 }
+
+/* ===================================================================
+   Lobby bertingkat: menu utama -> pilih hero & mulai / latihan & tutorial
+   =================================================================== */
+.lobby-view.hidden {
+  display: none;
+}
+#home-menu {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: min(760px, 100%);
+  margin: 6px auto 14px;
+}
+#home-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px 12px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(28, 38, 74, 0.92), rgba(12, 18, 38, 0.94));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+#home-menu button:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold);
+  box-shadow: 0 10px 26px -12px rgba(255, 210, 63, 0.6);
+}
+#home-menu i {
+  font-size: 28px;
+  font-style: normal;
+  line-height: 1;
+}
+#home-menu b {
+  font-size: 16px;
+}
+#home-menu small {
+  font-size: 12px;
+  color: var(--dim);
+}
+#home-menu .menu-main {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+  box-shadow: 0 12px 30px -12px rgba(255, 181, 46, 0.8);
+}
+#home-menu .menu-main b {
+  font-size: 30px;
+  letter-spacing: 0.18em;
+}
+#home-menu .menu-main small {
+  color: #4a3510;
+}
+.view-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 0 0 12px;
+}
+.view-head h2 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 0.06em;
+}
+.back-btn {
+  position: absolute;
+  left: 0;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(8, 12, 28, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.play-groups {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+.play-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(10, 15, 31, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.play-group h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.play-group .seg {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.play-group .lobby-row {
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.play-group #room-input {
+  width: 150px;
+  min-width: 0;
+}
+.start-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0 4px;
+  background: linear-gradient(180deg, transparent, rgba(11, 16, 32, 0.96) 35%);
+}
+.start-bar #play-btn {
+  min-width: 200px;
+  font-size: 22px;
+}
+.practice-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: min(820px, 100%);
+  margin: 0 auto 16px;
+}
+.practice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(28, 38, 74, 0.92), rgba(12, 18, 38, 0.94));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.practice-card i {
+  font-size: 34px;
+  font-style: normal;
+}
+.practice-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.practice-card p {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+.practice-card button {
+  margin-top: 6px;
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.practice-card button:disabled {
+  opacity: 0.6;
+}
+.practice-pick {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+/* tombol latihan/tutorial lama di baris opsi sudah tidak ada; gaya "disorot" tetap untuk kartu tutorial */
+.practice-card #tutorial-btn.suggest {
+  animation: update-pulse 1.6s ease-in-out infinite;
+}
+@media (max-width: 900px) {
+  .play-groups {
+    grid-template-columns: 1fr;
+  }
+}
+@media (pointer: coarse), (max-height: 520px) {
+  #home-menu {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 4px auto 8px;
+  }
+  #home-menu button {
+    padding: 8px 6px;
+  }
+  #home-menu i {
+    font-size: 20px;
+  }
+  #home-menu b {
+    font-size: 13px;
+  }
+  #home-menu small {
+    display: none;
+  }
+  #home-menu .menu-main {
+    padding: 10px;
+  }
+  #home-menu .menu-main b {
+    font-size: 22px;
+  }
+  .view-head {
+    min-height: 36px;
+    margin-bottom: 8px;
+  }
+  .view-head h2 {
+    font-size: 18px;
+  }
+  .back-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .play-groups {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  .play-group {
+    padding: 6px;
+    gap: 5px;
+  }
+  .practice-card {
+    padding: 10px;
+  }
+  .practice-card p {
+    font-size: 11.5px;
+  }
+  .start-bar #play-btn {
+    min-width: 150px;
+    font-size: 18px;
+  }
+}
+.practice-card #train-btn,
+.practice-card #tutorial-btn {
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border: 0;
+}
+/* bilah akun: tinggal kartu profil (tombol lainnya sudah ada di menu utama); disembunyikan di layar Main/Latihan */
+#account-bar #store-btn,
+#account-bar #rank-btn,
+#account-bar #friends-btn,
+#account-bar #settings-btn {
+  display: none;
+}
+#lobby.sub-view #account-bar {
+  display: none;
+}
+/* jumlah koin dan permintaan teman ikut tampil di petak menunya */
+#home-menu .tile-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  min-width: 18px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #e23d4b;
+  border-radius: 999px;
+}
+#home-menu .tile-coins {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gold);
+}
+#home-menu button {
+  position: relative;
+}
+/* talenta: kisi tiga kolom supaya muat di kotak kelompoknya */
+.play-group #talent-pick {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-radius: 14px;
+}
+.play-group #talent-pick button {
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+/* ruang di bawah supaya kelompok terakhir tidak tertutup bilah MULAI */
+#view-play {
+  padding-bottom: 8px;
+}
+#view-play #room-hint {
+  min-height: 0;
+  margin: 6px 0 0;
+}
+/* layar Main: kartu hero ringkas (tanpa deskripsi dan daftar skill), rinciannya di bawah kartu */
+#view-play .hero-card p,
+#view-play .hero-card ul {
+  display: none;
+}
+#view-play .hero-card .portrait {
+  height: 132px;
+}
+#hero-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 18px;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  max-width: 1100px;
+  font-size: 13px;
+  text-align: left;
+  background: rgba(10, 15, 31, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+#hero-detail:empty {
+  display: none;
+}
+#hero-detail h4 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--gold);
+}
+#hero-detail p {
+  flex: 1 1 320px;
+  margin: 0;
+  color: var(--dim);
+}
+#hero-detail ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#hero-detail li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+#hero-detail li .ico {
+  width: 16px;
+  height: 16px;
+}
+#hero-detail li b {
+  color: var(--gold);
+}
+@media (pointer: coarse), (max-height: 520px) {
+  #view-play .hero-card .portrait {
+    height: 84px;
+  }
+  #hero-detail {
+    font-size: 11.5px;
+    padding: 6px 10px;
+  }
+  #hero-detail p {
+    flex-basis: 100%;
+  }
+}
+/* layar Main di HP: enam kartu kecil dalam satu baris; kartu yang dipilih dua kali lebih lebar dan
+   satu-satunya yang menampilkan pilihan skin */
+@media (pointer: coarse), (max-height: 520px) {
+  #view-play #hero-cards {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+  }
+  #view-play .hero-card {
+    padding: 0 6px 6px;
+    border-radius: 10px;
+  }
+  #view-play .hero-card.selected {
+    grid-column: span 2;
+  }
+  #view-play .hero-card .portrait {
+    height: 64px;
+    margin: 0 -6px 4px;
+  }
+  #view-play .hero-card .role,
+  #view-play .hero-card .title {
+    display: none;
+  }
+  #view-play .hero-card h3 {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #view-play .hero-card:not(.selected) .skins {
+    display: none;
+  }
+  #view-play .hero-card.selected .skins span {
+    padding: 1px 5px;
+    font-size: 9.5px;
+  }
+  #view-play .hero-card.selected .skins small {
+    display: none;
+  }
+}

@@ -21,6 +21,7 @@ import {
   type Team,
 } from '../../shared/src';
 import { askTraining } from './ui/Training';
+import { setupMenu } from './ui/menu';
 import { askTutorial, tutorialDone } from './ui/Tutorial';
 import { accountLevel, accounts, validateName, validatePassword } from './account/accounts';
 import { sound } from './audio/Sound';
@@ -520,6 +521,7 @@ $('invite-join').addEventListener('click', () => {
 });
 
 // sudah masuk, atau pernah memilih main sebagai tamu: langsung ke lobby
+setupMenu();
 if (accounts.current() || store.get(GUEST_KEY)) showLobby();
 else showAuth();
 
