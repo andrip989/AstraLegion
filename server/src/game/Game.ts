@@ -578,7 +578,7 @@ export class Game {
         h.path = [];
         break;
       case 'buy':
-        if (typeof cmd.item === 'string') this.buyItem(h, cmd.item);
+        if (typeof cmd.item === 'string') this.buyItem(h, cmd.item, fin(cmd.slot) ? cmd.slot | 0 : undefined);
         break;
       case 'sell':
         if (fin(cmd.slot)) this.sellItem(h, cmd.slot | 0);
@@ -625,9 +625,21 @@ export class Game {
     return Math.hypot(h.x - f.x, h.z - f.z) < FOUNTAIN_RADIUS;
   }
 
-  buyItem(h: Hero, id: string): boolean {
+  /** Beli item. `replace` = slot yang dijual lebih dulu (tas penuh atau ingin mengganti); emasnya dihitung bersama. */
+  buyItem(h: Hero, id: string, replace?: number): boolean {
     const item = ITEMS[id];
-    if (!item || h.items.length >= MAX_ITEMS || h.gold < item.cost) return false;
+    if (!item) return false;
+    const old = replace !== undefined ? ITEMS[h.items[replace]] : undefined;
+    if (old) {
+      const refund = Math.floor(old.cost * SELL_REFUND);
+      if (h.gold + refund < item.cost) return false;
+      h.items.splice(replace!, 1);
+      h.gold += refund;
+    }
+    if (h.items.length >= MAX_ITEMS || h.gold < item.cost) {
+      if (old) h.applyItems();
+      return false;
+    }
     h.gold -= item.cost;
     h.items.push(id);
     h.applyItems();
@@ -636,7 +648,7 @@ export class Game {
 
   sellItem(h: Hero, slot: number): boolean {
     const item = ITEMS[h.items[slot]];
-    if (!item || !this.canShop(h)) return false;
+    if (!item) return false; // menjual boleh di mana saja (seperti membeli)
     h.items.splice(slot, 1);
     h.gold += Math.floor(item.cost * SELL_REFUND);
     h.applyItems();
@@ -1076,12 +1088,22 @@ export class Game {
       a.invisUntil = 0;
       a.revealUntil = this.time + BUSH_REVEAL_TIME; // menyerang membongkar persembunyian di semak
     }
+    // serangan kritis dari item
+    let crit = false;
+    if (a instanceof Hero && a.crit > 0 && Math.random() < a.crit) {
+      dmg *= 1.75;
+      crit = true;
+    }
     if (a.kind === 'minion' && (t.kind === 'tower' || t.kind === 'core')) dmg *= a.sub === 'siege' ? 2 : 1.5;
     a.attackCd = a.attackInterval;
     a.rot = Math.atan2(t.x - a.x, t.z - a.z);
     this.emit({ k: 'atk', a: a.id, b: t.id, r: a.ranged ? 1 : 0 });
     const before = t.hp;
     this.damage(a, t, dmg, 'attack');
+    if (crit) this.emit({ k: 'text', x: r2(t.x), z: r2(t.z), s: 'KRITIS!', c: 0xffb347, to: a.id });
+    // serangan memperlambat (item), dan duri: sebagian damage dipantulkan ke penyerang
+    if (a instanceof Hero && a.slowHit > 0 && t.alive && !(t instanceof Tower || t instanceof Core)) this.slow(t, 1 - a.slowHit, 1);
+    if (t instanceof Hero && t.thorns > 0 && a.alive && !(a instanceof Tower || a instanceof Core)) this.damage(t, a, Math.max(0, before - Math.max(0, t.hp)) * t.thorns, 'attack');
     // lifesteal dari item: sebagian damage yang benar-benar masuk kembali sebagai HP
     if (a instanceof Hero && a.lifesteal > 0 && a.alive) {
       a.hp = Math.min(a.maxHp, a.hp + Math.max(0, before - Math.max(0, t.hp)) * a.lifesteal);
@@ -1114,6 +1136,7 @@ export class Game {
       if (t.slamAt < this.time - TITAN_SLAM_EVERY) t.slamAt = this.time + 3; // hantaman pertama tidak langsung
     }
     if (t instanceof Hero) t.recallAt = 0; // terkena damage membatalkan recall
+    if (t instanceof Hero && t.armor > 0) amount *= 1 - t.armor; // zirah dari item
     if (t instanceof Hero && t.shield > 0) {
       const absorbed = Math.min(t.shield, amount);
       t.shield -= absorbed;
@@ -1145,6 +1168,10 @@ export class Game {
     // angka damage untuk pemain yang menyerang (bot tidak perlu)
     if (src instanceof Hero && src.playerId && amount >= 1) {
       this.emit({ k: 'dmg', x: r2(t.x), z: r2(t.z), n: Math.round(Math.min(amount, t.hp)), to: src.id });
+    }
+    // penghisap darah skill (item): bagian damage skill yang benar-benar masuk kembali sebagai HP
+    if (kind === 'skill' && src instanceof Hero && src.spellVamp > 0 && src.alive && !(t instanceof Tower || t instanceof Core)) {
+      src.hp = Math.min(src.maxHp, src.hp + Math.min(amount, Math.max(0, t.hp)) * src.spellVamp);
     }
     t.hp -= amount;
     if (t.hp <= 0) this.kill(t, src);
@@ -1181,6 +1208,15 @@ export class Game {
     t.hp = 0;
     this.emit({ k: 'die', a: t.id });
     const killer = src instanceof Hero ? src : null;
+    // item penghisap darah: menumbangkan creep/monster memulihkan HP, hero tiga kali lipat
+    if (killer && killer.alive && killer.killHeal > 0 && !(t instanceof Tower || t instanceof Core)) {
+      const heal = Math.round(killer.maxHp * killer.killHeal * (t instanceof Hero ? 3 : 1));
+      const got = Math.min(heal, killer.maxHp - killer.hp);
+      if (got > 0) {
+        killer.hp += got;
+        this.emit({ k: 'heal', x: r2(killer.x), z: r2(killer.z), n: Math.round(got) });
+      }
+    }
     const near = (range: number) =>
       this.heroes.filter((h) => h.alive && h.team !== t.team && Math.hypot(h.x - t.x, h.z - t.z) <= range);
 

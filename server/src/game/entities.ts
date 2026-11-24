@@ -138,6 +138,13 @@ export class Hero extends Unit {
   /** Bonus dari item yang tidak tercakup stat dasar. */
   cdr = 0;
   lifesteal = 0;
+  /** Efek item (lihat ItemStats): zirah, duri, kritis, serangan memperlambat, pulih saat menumbangkan, penghisap darah skill. */
+  armor = 0;
+  thorns = 0;
+  crit = 0;
+  slowHit = 0;
+  killHeal = 0;
+  spellVamp = 0;
   skillPower = 0;
   /** Waktu selesainya recall (0 = tidak sedang recall). */
   recallAt = 0;
@@ -211,6 +218,12 @@ export class Hero extends Unit {
     this.attackInterval = this.def.attackInterval / (1 + it.attackSpeed);
     this.cdr = it.cdr;
     this.lifesteal = it.lifesteal;
+    this.armor = it.armor;
+    this.thorns = it.thorns;
+    this.crit = it.crit;
+    this.slowHit = it.slowHit;
+    this.killHeal = it.killHeal;
+    this.spellVamp = it.spellVamp;
     this.skillPower = it.skillPower;
   }
 

@@ -166,6 +166,22 @@ const ITEM_ICONS: Record<string, string> = {
     `<path d="m16 12-3 5h3l-1.500 5 4.500-6h-3z" fill="#0b1020"/>`,
 };
 
+// item baru (efek khusus)
+ITEM_ICONS.crit_dagger = `<path d="M22 3 28 9 14 23l-4 1 1-4z" fill="currentColor"/><path d="m8 20 4 4-3 3-4-4z" fill="currentColor" opacity=".75"/><path d="m25 18 1.200 2.800 3 .3-2.300 2 .7 3-2.600-1.600-2.600 1.600.7-3-2.300-2 3-.3z" fill="currentColor"/>`;
+ITEM_ICONS.frost_bow = `<path d="M9 3c12 4 12 22 0 26" fill="none" stroke="currentColor" stroke-width="2.800" stroke-linecap="round"/><path d="M9 3v26" stroke="currentColor" stroke-width="1.300"/><path d="M23 9v14M17 12l12 8M17 20l12-8" stroke="currentColor" stroke-width="1.800" stroke-linecap="round"/>`;
+ITEM_ICONS.blood_chain = `<rect x="3" y="12" width="10" height="7" rx="3.500" fill="none" stroke="currentColor" stroke-width="2.600"/><rect x="11" y="12" width="10" height="7" rx="3.500" fill="none" stroke="currentColor" stroke-width="2.600" opacity=".75"/><path d="M25 7c3 4 4 6 4 8a4 4 0 0 1-8 0c0-2 1-4 4-8z" fill="currentColor"/>`;
+ITEM_ICONS.war_axe = `<path d="M14 4h3v25h-3z" fill="currentColor" opacity=".7"/><path d="M17 5c7 0 11 4 11 9s-4 9-11 9z" fill="currentColor"/><path d="M14 6c-5 1-9 4-9 8s3 7 9 8" fill="currentColor" opacity=".55"/>`;
+ITEM_ICONS.rage_blade = `<path d="M23 2 29 8 12 25l-5 1 1-5z" fill="currentColor"/><path d="m5 22 5 5-3 3-5-5z" fill="currentColor" opacity=".75"/><path d="M6 4c2 2 1 4 3 6M11 2c2 3 0 5 2 7" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" opacity=".8"/>`;
+ITEM_ICONS.soul_orb = `<circle cx="16" cy="17" r="9" fill="currentColor"/><path d="M16 12c2.500 3.500 3.500 5 3.500 6.500a3.500 3.500 0 0 1-7 0c0-1.500 1-3 3.500-6.500z" fill="#0b1020"/><path d="M16 2v4M8 5l2 3M24 5l-2 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".7"/>`;
+ITEM_ICONS.arcane_tome = `<path d="M5 6c4-2 8-2 11 1v21c-3-3-7-3-11-1z" fill="currentColor"/><path d="M27 6c-4-2-8-2-11 1v21c3-3 7-3 11-1z" fill="currentColor" opacity=".7"/><path d="m10 12 1 2.200 2.400.3-1.800 1.600.5 2.400-2.100-1.200-2.100 1.200.5-2.400-1.800-1.600 2.400-.3z" fill="#0b1020"/>`;
+ITEM_ICONS.mana_ring = `<circle cx="16" cy="18" r="9" fill="none" stroke="currentColor" stroke-width="3.200"/><path d="m16 3 4 5-4 5-4-5z" fill="currentColor"/>`;
+ITEM_ICONS.iron_vest = `<path d="M10 4 6 7v19h20V7l-4-3-3 3h-6z" fill="currentColor"/><path d="M11 13h10M11 18h10M11 23h10" stroke="#0b1020" stroke-width="1.800" stroke-linecap="round"/>`;
+ITEM_ICONS.thorn_mail = `<path d="M16 5 26 9v8c0 6-4 10-10 12C10 27 6 23 6 17V9z" fill="currentColor"/><path d="M16 1v5M3 9l4 2M29 9l-4 2M5 21l3-1M27 21l-3-1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 14l4 4 4-4" fill="none" stroke="#0b1020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+ITEM_ICONS.guardian_helm = `<path d="M5 18c0-8 5-14 11-14s11 6 11 14v8H5z" fill="currentColor"/><path d="M9 17h14v4H9z" fill="#0b1020"/><path d="M16 4v8" stroke="#0b1020" stroke-width="1.800"/>`;
+ITEM_ICONS.life_amulet = `<path d="M8 3c2 5 5 7 8 7s6-2 8-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 29c-6-4-9-8-9-11.500a4.500 4.500 0 0 1 9-1.500 4.500 4.500 0 0 1 9 1.500C25 21 22 25 16 29z" fill="currentColor"/>`;
+ITEM_ICONS.swift_boots = `<path d="M10 4h8v13l9 4v6H10z" fill="currentColor"/><path d="m4 9-3 6h3l-2 6 6-8H5l2-4z" fill="currentColor" opacity=".85"/>`;
+ITEM_ICONS.hunter_cloak = `<path d="M16 3c-3 0-5 2-5 5L5 28h22L21 8c0-3-2-5-5-5z" fill="currentColor"/><path d="M13 12l3 3 3-3" fill="none" stroke="#0b1020" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"/>`;
+
 // item aktif
 ITEM_ICONS.aegis_plate = `<path d="M16 3 27 7v8c0 7-4.600 11.500-11 14C9.600 26.500 5 22 5 15V7z" fill="currentColor"/><path d="M16 8v16M9 14h14" stroke="#0b1020" stroke-width="2.400" fill="none"/>`;
 ITEM_ICONS.pure_charm = `<circle cx="16" cy="18" r="8" fill="currentColor"/><path d="M12 9c0-4 8-4 8 0" stroke="currentColor" stroke-width="2" fill="none"/><path d="m16 13 1.600 3.400 3.700.400-2.800 2.500.800 3.700L16 21.100 12.700 23l.800-3.700-2.800-2.500 3.700-.400z" fill="#0b1020"/>`;

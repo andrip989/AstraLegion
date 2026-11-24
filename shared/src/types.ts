@@ -161,7 +161,7 @@ export type ClientCommand =
   | { t: 'attack'; id: number }
   | { t: 'cast'; slot: number; x: number; z: number }
   | { t: 'stop' }
-  | { t: 'buy'; item: string }
+  | { t: 'buy'; item: string; slot?: number } // slot: item yang dijual sekaligus (mengganti)
   | { t: 'sell'; slot: number }
   | { t: 'recall' }
   // obrolan: ke semua pemain (`all`) atau hanya tim sendiri

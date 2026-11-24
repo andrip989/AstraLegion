@@ -28,6 +28,7 @@ import {
   type HeroInfo,
   type ItemDef,
   type Snapshot,
+  ITEM_CATS,
 } from '../../../shared/src';
 import { sound } from '../audio/Sound';
 import type { VoiceLine } from '../audio/voice';
@@ -101,7 +102,8 @@ const WARD_ICON =
 
 export interface HudActions {
   cast(slot: number): void;
-  buy(item: string): void;
+  /** Beli item; `slot` = item di tas yang dijual sekaligus (mengganti). */
+  buy(item: string, slot?: number): void;
   sell(slot: number): void;
   recall(): void;
   openSettings(): void;
@@ -699,24 +701,120 @@ export class Hud {
 
   // -------------------------------------------------------------- item & toko
 
+  /** Tab toko yang terbuka ('saran' = urutan rekomendasi hero ini). */
+  private shopTab = 'saran';
+  /** Item toko yang sedang dilihat rinciannya, atau slot tas yang dipilih (untuk dijual / diganti). */
+  private shopPick: string | null = null;
+  private bagPick: number | null = null;
+  /** Sedang memilih item di tas yang akan diganti dengan shopPick (tas penuh). */
+  private replacing = false;
+
   private buildShop(): void {
+    const tabs = $('shop-tabs');
+    const all = [{ id: 'saran', name: 'Saran' }, { id: 'semua', name: 'Semua' }, ...ITEM_CATS];
+    tabs.innerHTML = all.map((t) => `<button type="button" data-tab="${t.id}">${t.name}</button>`).join('');
+    tabs.addEventListener('click', (e) => {
+      const tab = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab;
+      if (!tab) return;
+      this.shopTab = tab;
+      sound.play('click');
+      this.refreshShop();
+    });
     const list = $('shop-list');
     list.innerHTML = '';
     for (const it of ITEM_LIST) {
       const el = document.createElement('button');
       el.className = 'shop-item';
+      el.type = 'button';
       el.dataset.id = it.id;
-      el.innerHTML = `${itemIcon(it.id)}<span class="nm">${it.name}</span><span class="ds">${it.desc}</span><span class="cost">${it.cost}</span><span class="rec hidden"></span>`;
+      el.title = it.name;
+      el.innerHTML = `${itemIcon(it.id)}<span class="cost">${it.cost}</span><span class="rec hidden"></span><span class="own hidden">&#10003;</span>`;
       el.addEventListener('click', () => {
-        if (el.classList.contains('off')) {
-          sound.play('error');
-          return;
-        }
-        this.actions.buy(it.id);
-        sound.play('buy');
+        this.shopPick = it.id;
+        this.bagPick = null;
+        this.replacing = false;
+        sound.play('click');
+        this.refreshShop();
       });
       list.appendChild(el);
     }
+    $('shop-detail').addEventListener('click', (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (act) this.shopAction(act);
+    });
+    $('shop-bag').addEventListener('click', (e) => {
+      const slot = (e.target as HTMLElement).closest<HTMLElement>('[data-slot]')?.dataset.slot;
+      if (slot === undefined) return;
+      const i = Number(slot);
+      if (!this.items[i]) return;
+      if (this.replacing && this.shopPick) {
+        // ganti: jual item ini sekaligus membeli yang dipilih
+        const def = ITEMS[this.shopPick];
+        const refund = Math.floor((ITEMS[this.items[i]]?.cost ?? 0) * SELL_REFUND);
+        if (this.gold + refund < def.cost) {
+          sound.play('error');
+          return;
+        }
+        this.actions.buy(this.shopPick, i);
+        sound.play('buy');
+        this.replacing = false;
+        this.shopPick = null;
+      } else {
+        this.bagPick = i;
+        this.shopPick = null;
+        sound.play('click');
+      }
+      this.refreshShop();
+    });
+  }
+
+  /** Tombol di panel rincian: beli, ganti (pilih item di tas), jual, batal. */
+  private shopAction(act: string): void {
+    if (act === 'buy' && this.shopPick) {
+      const def = ITEMS[this.shopPick];
+      if (this.items.length >= MAX_ITEMS || this.gold < def.cost || !(this.buyAnywhere || this.canShop)) {
+        sound.play('error');
+        return;
+      }
+      this.actions.buy(def.id);
+      sound.play('buy');
+    } else if (act === 'replace') {
+      this.replacing = true;
+      sound.play('click');
+    } else if (act === 'sell' && this.bagPick !== null) {
+      this.actions.sell(this.bagPick);
+      sound.play('coin');
+      this.bagPick = null;
+    } else if (act === 'cancel') {
+      this.replacing = false;
+      sound.play('click');
+    }
+    this.refreshShop();
+  }
+
+  /** Baris rincian stat item (dari ItemStats) untuk panel rincian toko. */
+  private statLines(id: string): string {
+    const st = ITEMS[id]?.stats ?? {};
+    const pct = (n: number) => `${Math.round(n * 100)}%`;
+    const lines: string[] = [];
+    if (st.damage) lines.push(`+${st.damage} damage serangan`);
+    if (st.hp) lines.push(`+${st.hp} HP`);
+    if (st.mana) lines.push(`+${st.mana} mana`);
+    if (st.hpRegen) lines.push(`+${st.hpRegen} regenerasi HP`);
+    if (st.manaRegen) lines.push(`+${st.manaRegen} regenerasi mana`);
+    if (st.moveSpeed) lines.push(`+${String(st.moveSpeed).replace('.', ',')} kecepatan gerak`);
+    if (st.attackSpeed) lines.push(`+${pct(st.attackSpeed)} kecepatan serang`);
+    if (st.cdr) lines.push(`Cooldown -${pct(st.cdr)}`);
+    if (st.lifesteal) lines.push(`Penghisap darah ${pct(st.lifesteal)}`);
+    if (st.skillPower) lines.push(`Damage skill +${pct(st.skillPower)}`);
+    if (st.armor) lines.push(`Damage diterima -${pct(st.armor)}`);
+    if (st.thorns) lines.push(`Pantulkan ${pct(st.thorns)} damage`);
+    if (st.crit) lines.push(`Kritis ${pct(st.crit)}`);
+    if (st.slowHit) lines.push(`Serangan memperlambat ${pct(st.slowHit)}`);
+    if (st.killHeal) lines.push(`Pulih ${pct(st.killHeal)} HP tiap membunuh`);
+    if (st.spellVamp) lines.push(`Skill menghisap darah ${pct(st.spellVamp)}`);
+    if (ITEMS[id]?.active) lines.push('Punya kemampuan AKTIF');
+    return lines.map((l) => `<span>${l}</span>`).join('');
   }
 
   private renderItems(items: string[]): void {
@@ -733,12 +831,15 @@ export class Hud {
         if (def.active) el.classList.add('usable');
         const refund = Math.floor(def.cost * SELL_REFUND);
         const how = def.active ? (IS_TOUCH ? 'Ketuk untuk memakai. ' : `Klik atau tekan ${i + 1} untuk memakai. `) : '';
-        el.addEventListener('pointerenter', () => this.tip(`<b>${def.name}</b><br>${def.desc}<br><small>${how}Klik saat toko terbuka untuk menjual (+${refund} emas)</small>`));
+        el.addEventListener('pointerenter', () => this.tip(`<b>${def.name}</b><br>${def.desc}<br><small>${how}Buka toko lalu klik item ini untuk menjual (+${refund} emas) atau menggantinya</small>`));
         el.addEventListener('pointerleave', () => this.tip(null));
         el.addEventListener('click', () => {
-          if (this.shopOpen && this.canShop) {
-            this.actions.sell(i);
-            sound.play('coin');
+          if (this.shopOpen) {
+            this.bagPick = i;
+            this.shopPick = null;
+            this.replacing = false;
+            sound.play('click');
+            this.refreshShop();
           } else if (def.active && !this.shopOpen) {
             this.actions.useItem(i);
           }
@@ -748,34 +849,75 @@ export class Hud {
     }
   }
 
+  private shopKey = '';
+
   private refreshShop(): void {
+    // digambar ulang hanya bila ada yang berubah: tombol yang diganti di tengah klik tidak akan menerima kliknya
+    const key = [this.gold, this.items.join(','), this.buyAnywhere, this.canShop, this.shopSupported, this.shopTab, this.shopPick, this.bagPick, this.replacing, this.rec?.id, this.def?.id].join('|');
+    if (key === this.shopKey) return;
+    this.shopKey = key;
     $('shop-gold').textContent = `${this.gold} emas`;
     const full = this.items.length >= MAX_ITEMS;
     const canBuy = this.buyAnywhere || this.canShop;
-    $('shop-note').textContent = !this.shopSupported
-      ? 'Server ini memakai versi lama yang belum mendukung toko.'
-      : !canBuy
-        ? 'Belanja hanya bisa di base (tekan B untuk pulang) atau saat menunggu bangkit.'
-        : full
-          ? 'Tas penuh. Jual item (klik item di tasmu) saat berada di base.'
-          : 'Klik item untuk membeli. Angka emas = urutan yang disarankan untuk heromu. Menjual hanya bisa di base.';
     const build = this.def ? (BUILDS[this.def.id] ?? DEFAULT_BUILD) : [];
-    for (const el of $('shop-list').children) {
-      const def = ITEMS[(el as HTMLElement).dataset.id!];
-      el.classList.toggle('off', !this.shopSupported || !canBuy || full || this.gold < def.cost);
+    for (const b of $('shop-tabs').children) b.classList.toggle('on', (b as HTMLElement).dataset.tab === this.shopTab);
+    // daftar kotak: tab "Saran" menurut urutan rekomendasi hero ini, tab lain menurut kategori
+    const list = $('shop-list');
+    const order = (id: string) => (this.shopTab === 'saran' ? build.indexOf(id) : 0);
+    const els = [...list.children] as HTMLElement[];
+    if (this.shopTab === 'saran') els.sort((a, b) => order(a.dataset.id!) - order(b.dataset.id!)).forEach((e) => list.appendChild(e));
+    else els.sort((a, b) => ITEM_LIST.findIndex((i) => i.id === a.dataset.id) - ITEM_LIST.findIndex((i) => i.id === b.dataset.id)).forEach((e) => list.appendChild(e));
+    for (const el of els) {
+      const def = ITEMS[el.dataset.id!];
+      const show = this.shopTab === 'semua' || (this.shopTab === 'saran' ? build.includes(def.id) : def.cat === this.shopTab);
+      el.classList.toggle('hidden', !show);
       el.classList.toggle('poor', this.gold < def.cost);
-      // lencana urutan rekomendasi; item berikutnya disorot
-      const order = build.indexOf(def.id);
+      el.classList.toggle('sel', this.shopPick === def.id);
+      const rank = build.indexOf(def.id);
       const badge = el.querySelector('.rec') as HTMLElement;
-      badge.textContent = order >= 0 ? String(order + 1) : '';
-      badge.classList.toggle('hidden', order < 0);
+      badge.textContent = rank >= 0 ? String(rank + 1) : '';
+      badge.classList.toggle('hidden', rank < 0);
+      el.querySelector('.own')!.classList.toggle('hidden', !this.items.includes(def.id));
       el.classList.toggle('next', this.rec?.id === def.id);
     }
+    // tas: enam slot; yang dipilih disorot, dan saat mengganti semuanya bisa diklik sebagai sasaran
+    $('shop-bag').innerHTML = Array.from({ length: MAX_ITEMS }, (_, i) => {
+      const id = this.items[i];
+      if (!id) return `<div class="bag-slot empty"></div>`;
+      const cls = ['bag-slot', this.bagPick === i ? 'sel' : '', this.replacing ? 'target' : ''].join(' ');
+      return `<button type="button" class="${cls}" data-slot="${i}" title="${ITEMS[id]?.name ?? id}">${itemIcon(id)}</button>`;
+    }).join('');
+    // panel rincian
+    const detail = $('shop-detail');
+    if (this.bagPick !== null && this.items[this.bagPick]) {
+      const def = ITEMS[this.items[this.bagPick]];
+      const refund = Math.floor(def.cost * SELL_REFUND);
+      detail.innerHTML =
+        `<div class="dt-head">${itemIcon(def.id)}<div><b>${def.name}</b><small>Di tas · dijual ${refund} emas</small></div></div>` +
+        `<p>${def.desc}</p><div class="dt-stats">${this.statLines(def.id)}</div>` +
+        `<div class="dt-acts"><button type="button" data-act="sell" class="sell">Jual +${refund} emas</button></div>`;
+    } else if (this.shopPick) {
+      const def = ITEMS[this.shopPick];
+      let act: string;
+      if (!this.shopSupported) act = `<small>Server ini belum mendukung toko.</small>`;
+      else if (!canBuy) act = `<small>Belanja hanya di base atau saat menunggu bangkit.</small>`;
+      else if (this.replacing) act = `<small class="pick">Pilih item di tas yang akan diganti.</small><button type="button" data-act="cancel">Batal</button>`;
+      else if (full) act = `<button type="button" data-act="replace" class="buy">Ganti item di tas…</button>`;
+      else if (this.gold < def.cost) act = `<button type="button" class="buy" disabled>Kurang ${def.cost - this.gold} emas</button>`;
+      else act = `<button type="button" data-act="buy" class="buy">Beli ${def.cost} emas</button>`;
+      detail.innerHTML =
+        `<div class="dt-head">${itemIcon(def.id)}<div><b>${def.name}</b><small>${def.cost} emas${this.items.includes(def.id) ? ' · sudah dimiliki' : ''}</small></div></div>` +
+        `<p>${def.desc}</p><div class="dt-stats">${this.statLines(def.id)}</div><div class="dt-acts">${act}</div>`;
+    } else {
+      detail.innerHTML = `<p class="dt-empty">Klik kotak item untuk melihat rinciannya. Angka di pojok = urutan saran untuk heromu.</p>`;
+    }
+    $('shop-note').textContent = !this.shopSupported ? 'Server ini memakai versi lama yang belum mendukung toko.' : full ? 'Tas penuh: pilih item lalu "Ganti", atau jual item di tas.' : '';
   }
 
   toggleShop(force?: boolean): void {
     this.shopOpen = force ?? !this.shopOpen;
     $('shop').classList.toggle('hidden', !this.shopOpen);
+    document.body.classList.toggle('shop-open', this.shopOpen); // tombol admin/latihan menyingkir selagi toko terbuka
     $('shop-btn').classList.toggle('on', this.shopOpen);
     if (this.shopOpen) this.refreshShop();
     sound.play('click');

@@ -71,7 +71,7 @@ export class GameClient {
     const showSettings = () => openSettings(true, onLogout, () => this.toLobby());
     this.hud = new Hud(transport.mode, {
       cast: (slot) => this.controls.castSlot(slot, true),
-      buy: (item) => transport.send({ t: 'buy', item }),
+      buy: (item, slot) => transport.send(slot === undefined ? { t: 'buy', item } : { t: 'buy', item, slot }),
       sell: (slot) => transport.send({ t: 'sell', slot }),
       recall: () => transport.send({ t: 'recall' }),
       openSettings: showSettings,
