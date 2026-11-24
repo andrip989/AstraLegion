@@ -5,6 +5,7 @@ import { FogOfWar } from '../render/fog';
 import type { Game } from '../../../server/src/game/Game';
 import { Training, trainingWanted } from '../ui/Training';
 import { Tutorial, tutorialWanted } from '../ui/Tutorial';
+import { AdminPanel } from '../ui/Admin';
 import { accountLevel, accounts } from '../account/accounts';
 import { GameSounds } from '../audio/gameSounds';
 import { sound } from '../audio/Sound';
@@ -114,6 +115,8 @@ export class GameClient {
       this.tutorial = new Tutorial(local, 'local', () => (this.views.self ? { x: this.views.self.x, z: this.views.self.z } : null));
       document.getElementById('tip-close')?.click();
     }
+    // menu admin: semua pertandingan offline lawan bot (tidak ada di pertandingan online)
+    if (transport.mode === 'offline' && local) new AdminPanel(local, 'local', (text) => this.hud.feed(text));
 
     const followBtn = document.getElementById('follow-btn')!;
     const syncFollow = (on: boolean) => followBtn.classList.toggle('on', on);

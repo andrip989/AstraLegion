@@ -147,6 +147,9 @@ export class Hero extends Unit {
   lastKillAt = -99;
   /** Berkah Golem aktif sampai waktu ini (bonus damage). */
   buffUntil = 0;
+  /** Menu admin (hanya pertandingan offline di browser): kebal terhadap semua damage, dan sekali pukul langsung tumbang. */
+  godMode = false;
+  oneHit = false;
   /** Talenta pilihan pemain (id di TALENTS); bonusnya ikut dihitung di recalc. */
   talent = DEFAULT_TALENT;
   /** Sisa jeda menanam suar (detik). */

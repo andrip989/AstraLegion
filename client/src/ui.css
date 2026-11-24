@@ -3014,3 +3014,72 @@ img.logo {
     display: none;
   }
 }
+
+/* ---------- menu admin (pertandingan offline lawan bot saja) ---------- */
+#admin {
+  position: absolute;
+  top: 230px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: auto;
+}
+#admin button {
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  background: rgba(8, 12, 28, 0.86);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#admin #admin-toggle {
+  color: #fff;
+  background: linear-gradient(180deg, #ff7a7a, #d6334a);
+  border: 0;
+}
+#admin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: rgba(8, 12, 28, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#admin-panel.hidden {
+  display: none;
+}
+#admin-panel button.on {
+  color: #201400;
+  background: linear-gradient(180deg, #ffe58a, #ffb52e);
+  border-color: transparent;
+}
+@media (pointer: coarse) {
+  #admin {
+    top: 220px;
+    left: max(8px, env(safe-area-inset-left));
+  }
+  #admin button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  #admin-panel {
+    position: fixed;
+    top: 46px;
+    left: 50%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 360px;
+    transform: translateX(-50%);
+  }
+}
+/* tombol admin/latihan berada di atas area joystick layar sentuh: harus menang saat diketuk */
+#admin,
+#training {
+  z-index: 30;
+}

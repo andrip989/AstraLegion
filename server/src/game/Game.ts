@@ -1056,6 +1056,9 @@ export class Game {
   /** `kind` 'skill' (default) ikut diperkuat bonus damage skill dari item. */
   damage(src: Unit | null, t: Unit, amount: number, kind: 'attack' | 'skill' = 'skill'): void {
     if (!t.alive || t.invulnerable || amount <= 0) return;
+    // menu admin (pertandingan offline saja; tidak ada perintah jaringan untuk ini): kebal, atau sekali pukul tumbang
+    if (t instanceof Hero && t.godMode) return;
+    if (src instanceof Hero && src.oneHit) amount = t.hp + (t instanceof Hero ? t.shield : 0) + 1e6;
     // bot memukul lebih lemah / lebih keras menurut tingkat kesulitan room
     if (src instanceof Hero && src.isBot && t instanceof Hero) amount *= BOT_LEVELS[this.botLevel].damage;
     if (kind === 'skill' && src instanceof Hero) amount *= 1 + src.skillPower + (src.buffUntil > this.time ? GOLEM_BUFF : 0) + (src.titanUntil > this.time ? TITAN_BUFF : 0);
